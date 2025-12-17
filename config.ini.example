@@ -9,8 +9,20 @@ port = 1000
 path = WADO/AETILE
 
 [PATHS]
-osirix_incoming = W:\
-radiant_exe = C:\Program Files\RadiAntViewer64bitARM\RadiAntViewer.exe
+# Onde os exames serão armazenados (Persistent) ou Temporários (Transient)
+# Windows:
+radiant_dicom = C:\DICOM
+# Mac:
+# radiant_dicom = /Users/SEU_USER/Documents/DICOM
+
+# (Opcional) Apenas para OsiriX/Horos: Pasta monitorada pelo viewer
+# Windows:
+# osirix_incoming = W:\
+# Mac:
+# osirix_incoming = /Users/SEU_USER/Documents/OsiriX Data/Incoming
+
+# Caminho do executável (Apenas para RadiAnt - Windows Only)
+radiant_exe = C:\Program Files\RadiAntViewer\RadiAntViewer.exe
 radiant_dicom = C:\DICOM
 
 [SETTINGS]
