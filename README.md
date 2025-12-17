@@ -74,6 +74,24 @@ O projeto conta com um script unificado `nox.py`.
 
 ### Instalação
 
+#### Pré-requisitos: Git
+
+Você precisará do **Git** para baixar o projeto.
+
+*   **Windows 🪟**
+    *   **Instalador**: [git-scm.com](https://git-scm.com/download/win)
+    *   **Terminal**: `winget install --id Git.Git -e --source winget`
+
+*   **macOS 🍎**
+    1.  **Instale o Homebrew** (gerenciador de pacotes, caso não tenha):
+        ```bash
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        ```
+    2.  **Instale o Git**:
+        ```bash
+        brew install git
+        ```
+
 #### Windows 🪟
 
 1.  **Clone o repositório:**
