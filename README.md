@@ -72,15 +72,24 @@ scenarios = ["MONITOR", "MONITOR_RX"]
 
 O projeto conta com um script unificado `nox.py`.
 
-### Instalação (Windows)
-1. Execute o script de instalação para configurar Python e dependências:
-   ```powershell
-   .\install.ps1
-   ```
-2. Ative o ambiente virtual:
-   ```powershell
-   . $env:USERPROFILE\.nox\Scripts\Activate.ps1
-   ```
+### Instalação
+
+1.  Crie e ative um ambiente virtual (recomendado):
+    ```bash
+    # Windows
+    python -m venv .nox
+    .\.nox\Scripts\Activate
+    
+    # Mac/Linux
+    python3 -m venv .nox
+    source .nox/bin/activate
+    ```
+
+2.  Instale as dependências:
+    ```bash
+    pip install -r requirements.txt
+    playwright install chromium
+    ```
 
 ### Execução
 
