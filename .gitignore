@@ -16,3 +16,6 @@ __pycache__/
 *.pyc
 .nox/
 venv/
+
+# macOS
+.DS_Store
