@@ -41,12 +41,16 @@ CONSTANTES INTERNAS:
   DOWNLOAD_WORKERS : Mapeia [SETTINGS] threads.
   RADIANT_DICOM_DIR: Path object de [PATHS] radiant_dicom.
   STORAGE_MODE     : Modo de armazenamento efetivo.
+  VERSION          : Versão atual do aplicativo.
 """
 
 import sys
 import os
 import configparser
 from pathlib import Path
+
+# === Versão do Aplicativo ===
+VERSION = "1.0.0"
 
 # === Caminho base e arquivo INI ===
 BASE_DIR = Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve().parent

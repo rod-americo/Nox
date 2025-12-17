@@ -227,7 +227,7 @@ def load_window_state(page: ft.Page):
         print(f"ERRO ao carregar estado: {e}")
 
 def main(page: ft.Page, scenarios=None, no_prepare=False):
-    page.title = "Nox"
+    page.title = f"Nox v{config.VERSION}"
     page.theme_mode = THEME_MODE
     page.bgcolor = COLOR_BG
     page.padding = 5
