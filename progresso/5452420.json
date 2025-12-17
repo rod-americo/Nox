@@ -1,0 +1,16 @@
+{
+  "an": "5452420",
+  "servidor": "HBR",
+  "status": "completo",
+  "velocidade": 3.8,
+  "baixadas": 2,
+  "total": 2,
+  "patient_name": "LUANA REGINA BALNO WERNIK",
+  "study_desc": "RX TORAX PA   PERFIL",
+  "modality": "DX",
+  "study_uid": "1.2.826.0.1.3680043.6.98898.3506.20251216133805.17940.111.295234",
+  "historico": [
+    "1.2.392.200036.9107.307.34293.20251216.134403.1020156",
+    "1.2.392.200036.9107.307.34293.20251216.134403.1020157"
+  ]
+}

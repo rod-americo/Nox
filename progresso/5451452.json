@@ -1,0 +1,16 @@
+{
+  "an": "5451452",
+  "servidor": "HAC",
+  "status": "completo",
+  "velocidade": 1.4,
+  "baixadas": 2,
+  "total": 2,
+  "patient_name": "GABRIEL FIAIAS PORTELA",
+  "study_desc": "",
+  "modality": "DX",
+  "study_uid": "1.2.826.0.1.3680043.2.951.52141687",
+  "historico": [
+    "1.2.156.112536.2.560.28134011045128090.1536118184670.15679",
+    "1.2.156.112536.2.560.28134011045128090.1536118228442.15694"
+  ]
+}

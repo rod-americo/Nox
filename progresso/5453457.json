@@ -1,0 +1,16 @@
+{
+  "an": "5453457",
+  "servidor": "HAC",
+  "status": "completo",
+  "velocidade": 2.9,
+  "baixadas": 2,
+  "total": 2,
+  "patient_name": "MATHEUS CABRAL CERQUEIRA DIAS",
+  "study_desc": "",
+  "modality": "CR",
+  "study_uid": "1.2.826.0.1.3680043.2.951.52142630",
+  "historico": [
+    "1.2.392.200046.100.13.98421341619748541199549768206450043633",
+    "1.2.392.200046.100.13.393523725115446557057253856552101648655"
+  ]
+}

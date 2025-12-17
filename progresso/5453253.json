@@ -1,0 +1,16 @@
+{
+  "an": "5453253",
+  "servidor": "HBR",
+  "status": "completo",
+  "velocidade": 3.1,
+  "baixadas": 2,
+  "total": 2,
+  "patient_name": "RYAN GOMES RODRIGUES",
+  "study_desc": "RX TORAX PA   PERFIL",
+  "modality": "CR",
+  "study_uid": "1.2.826.0.1.3680043.6.26216.80468.20251216173353.17940.60.314226",
+  "historico": [
+    "1.3.12.2.1107.5.3.33.5965.11.202512161757160852",
+    "1.3.12.2.1107.5.3.33.5965.11.202512161756100516"
+  ]
+}

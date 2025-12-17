@@ -1,0 +1,16 @@
+{
+  "an": "5449234",
+  "servidor": "HAC",
+  "status": "completo",
+  "velocidade": 1.9,
+  "baixadas": 2,
+  "total": 2,
+  "patient_name": "LEONARDO DRUMOND BETTINI COELHO",
+  "study_desc": "",
+  "modality": "DX",
+  "study_uid": "1.2.826.0.1.3680043.2.951.52140667",
+  "historico": [
+    "1.2.156.112536.2.560.28134011045128090.1536050379152.9867",
+    "1.2.156.112536.2.560.28134011045128090.1536050405811.9882"
+  ]
+}

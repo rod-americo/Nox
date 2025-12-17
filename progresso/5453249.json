@@ -1,0 +1,16 @@
+{
+  "an": "5453249",
+  "servidor": "HAC",
+  "status": "completo",
+  "velocidade": 2.3,
+  "baixadas": 2,
+  "total": 2,
+  "patient_name": "BERNARDO LOPES MARQUES",
+  "study_desc": "",
+  "modality": "CR",
+  "study_uid": "1.2.826.0.1.3680043.2.951.52142563",
+  "historico": [
+    "1.2.392.200046.100.13.57344014038846192915931045517804814734",
+    "1.2.392.200046.100.13.60813221598488133356166840131288056052"
+  ]
+}

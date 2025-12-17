@@ -1,0 +1,31 @@
+[HBR]
+server = 10.36.254.61
+port = 1000
+path = WADO/AETILE
+
+[HAC]
+server = 10.24.254.27
+port = 1000
+path = WADO/AETILE
+
+[PATHS]
+osirix_incoming = W:\
+radiant_exe = C:\Program Files\RadiAntViewer64bitARM\RadiAntViewer.exe
+radiant_dicom = C:\DICOM
+
+[SETTINGS]
+threads = 15
+retries = 4
+retry_wait = 30
+loop_interval = 90
+max_exames = 1000
+slider_max = 1000
+theme = system
+title = Assistente :: RadiAnt :: Mezo
+viewer = osirix
+scenarios = ["MONITOR", "MONITOR_RX"]
+
+[AUTH]
+user = SEU_USUARIO
+pass = SUA_SENHA
+

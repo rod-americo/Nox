@@ -1,0 +1,16 @@
+{
+  "an": "5453461",
+  "servidor": "HBR",
+  "status": "completo",
+  "velocidade": 1.3,
+  "baixadas": 2,
+  "total": 2,
+  "patient_name": "CLARA DE SOUSA DURAES",
+  "study_desc": "RX TORAX PA   PERFIL",
+  "modality": "CR",
+  "study_uid": "1.2.826.0.1.3680043.6.87743.9938.20251216211133.17940.107.318018",
+  "historico": [
+    "1.3.12.2.1107.5.3.33.5965.11.202512162133060087",
+    "1.3.12.2.1107.5.3.33.5965.11.202512162133310171"
+  ]
+}

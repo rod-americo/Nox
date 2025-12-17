@@ -1,0 +1,16 @@
+{
+  "an": "5452821",
+  "servidor": "HBR",
+  "status": "completo",
+  "velocidade": 3.8,
+  "baixadas": 2,
+  "total": 2,
+  "patient_name": "MARIA APARECIDA FABRI PESSANHA",
+  "study_desc": "RX TORAX PA   PERFIL",
+  "modality": "DX",
+  "study_uid": "1.2.826.0.1.3680043.2.951.32142352",
+  "historico": [
+    "1.2.392.200036.9107.307.34293.20251216.144801.1020176",
+    "1.2.392.200036.9107.307.34293.20251216.145733.1020180"
+  ]
+}

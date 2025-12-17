@@ -1,0 +1,16 @@
+{
+  "an": "5449042",
+  "servidor": "HAC",
+  "status": "completo",
+  "velocidade": 0.7,
+  "baixadas": 2,
+  "total": 2,
+  "patient_name": "THEO RODRIGUES TEIXEIRA",
+  "study_desc": "",
+  "modality": "DX",
+  "study_uid": "1.2.826.0.1.3680043.2.951.52140572",
+  "historico": [
+    "1.2.156.112536.2.560.28134011045128090.1536036180846.9205",
+    "1.2.156.112536.2.560.28134011045128090.153603609736.9175"
+  ]
+}

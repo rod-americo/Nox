@@ -1,0 +1,16 @@
+{
+  "an": "5451426",
+  "servidor": "HAC",
+  "status": "completo",
+  "velocidade": 2.5,
+  "baixadas": 2,
+  "total": 2,
+  "patient_name": "BENICIO MOREIRA DE AZEVEDO",
+  "study_desc": "",
+  "modality": "CR",
+  "study_uid": "1.2.826.0.1.3680043.2.951.52141675",
+  "historico": [
+    "1.2.392.200046.100.13.355218267677148836547802999888435549927",
+    "1.2.392.200046.100.13.65413391481095245695037771748933329841"
+  ]
+}
