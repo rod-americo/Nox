@@ -74,18 +74,41 @@ O projeto conta com um script unificado `nox.py`.
 
 ### Instalação
 
-1.  Crie e ative um ambiente virtual (recomendado):
-    ```bash
-    # Windows
+#### Windows 🪟
+
+1.  **Clone o repositório:**
+    ```powershell
+    git clone https://github.com/rod-americo/nox.git
+    cd nox
+    ```
+
+2.  **Crie e ative o ambiente virtual:**
+    ```powershell
     python -m venv .nox
     .\.nox\Scripts\Activate
-    
-    # Mac/Linux
+    ```
+
+3.  **Instale as dependências:**
+    ```powershell
+    pip install -r requirements.txt
+    playwright install chromium
+    ```
+
+#### macOS / Linux 🍎🐧
+
+1.  **Clone o repositório:**
+    ```bash
+    git clone https://github.com/rod-americo/nox.git
+    cd nox
+    ```
+
+2.  **Crie e ative o ambiente virtual:**
+    ```bash
     python3 -m venv .nox
     source .nox/bin/activate
     ```
 
-2.  Instale as dependências:
+3.  **Instale as dependências:**
     ```bash
     pip install -r requirements.txt
     playwright install chromium
@@ -93,7 +116,9 @@ O projeto conta com um script unificado `nox.py`.
 
 ### Execução
 
-#### Modo GUI (Interface Gráfica) - Padrão
+Sempre ative o ambiente virtual antes de rodar (`.\.nox\Scripts\Activate` ou `source .nox/bin/activate`).
+
+#### Modo GUI (Interface Gráfica)
 ```bash
 python nox.py
 ```
