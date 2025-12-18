@@ -26,7 +26,8 @@
 *   **GUI Moderna (Flet)**: Interface responsiva, Always-on-Top, com tema ajustável.
 *   **Lista Dinâmica**: Exibe exames ordenados alfabeticamente por Nome do Paciente.
 *   **Controle de Retenção Dinâmico**: Slider na interface para ajustar o limite de exames (`max_exames`) em tempo real (5 a 200).
-*   **Download Manual**: Campo para baixar exames específicos digitando `SERVER AN`.
+*   **Download Manual**: Selecione o servidor (HBR/HAC) e digite apenas o *Accession Number* para baixar.
+*   **Busca e Filtragem**: Barra de busca para filtrar exames instantaneamente por Nome, AN, Modalidade ou Descrição.
 
 ---
 
@@ -143,6 +144,7 @@ python nox.py
 *Funcionalidades da GUI:*
 *   **Seleção de Cenários em Tempo Real**: Novo painel "Cenários" permite carregar a lista completa do servidor e marcar/desmarcar quais devem ser monitorados. A escolha é salva automaticamente.
 *   **Slider Dinâmico**: O limite do slider ajusta-se ao valor de `slider_max` no INI.
+*   **Download Manual**: Interface intuitiva com botões de rádio para escolha do servidor.
 
 #### Modo CLI (Terminal)
 Ideal para debug ou execução leve. Use **aspas** para nomes compostos.
