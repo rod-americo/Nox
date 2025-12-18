@@ -601,7 +601,8 @@ def main(page: ft.Page, scenarios=None, no_prepare=False):
         def _fetch():
             try:
                 cmd = [sys.executable, "prepare.py", "--mapear-cenarios"]
-                result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+                # errors='replace' evita crash se o windows cuspir cp1252 (á, é, etc) no buffer
+                result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
                 
                 found_list = []
                                 

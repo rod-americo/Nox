@@ -229,12 +229,13 @@ def main(**kwargs):
         args = parser.parse_args(kwargs["args"])
     else:
         # Se sys.argv estiver vazio de argumentos úteis (ex: rodando via import), default para MONITOR
-        if len(sys.argv) < 2 and "cenarios" not in kwargs:
-             # Default seguro se rodar pelado
-             sys.argv.append("MONITOR")
+        # Se sys.argv estiver vazio de argumentos úteis (ex: rodando via import), não força MONITOR aqui
+        # Deixa o parser rodar vazio e pegamos do config abaixo
+        pass
         args = parser.parse_args()
     
-    cenarios = args.cenarios or ["MONITOR"] # Garante lista
+    # Prioridade: 1. Argumentos CLI | 2. Config.ini | 3. Hardcoded MONITOR
+    cenarios = args.cenarios or config.SCENARIOS or ["MONITOR"]
 
     log_info("=== ORQUESTRADOR NOX ===")
     log_info(f"Cenários: {', '.join(cenarios)}")

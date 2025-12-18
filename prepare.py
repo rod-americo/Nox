@@ -297,6 +297,12 @@ def mapear_cenarios():
             log_erro("Nenhum cenário encontrado ou estrutura desconhecida.")
             return
 
+        # Forçar saída UTF-8 no stdout para captura correta
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+        except:
+            pass
+
         print("\n--- CENÁRIOS DISPONÍVEIS ---")
         for item in itens:
             print(f"- {item}")
