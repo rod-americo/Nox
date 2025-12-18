@@ -249,6 +249,10 @@ def main(**kwargs):
             prepare.preparar(cenarios)
         except Exception as e:
             log_erro(f"Falha fatal no prepare.py: {e}")
+            log_erro(f"Falha fatal no prepare.py: {e}")
+            # Se tiver controller (GUI), não dar sys.exit total, apenas raise para o loop pegar
+            if 'controller' in kwargs: 
+                raise e
             sys.exit(1)
     else:
         log_info("Prepare pulado (--no-prepare).")
@@ -291,13 +295,19 @@ def main(**kwargs):
                     for i in range(espera_total, 0, -1):
                         if controller.should_stop:
                             break
-                        sys.stdout.write(f"\rAguardando {i}s para próximo ciclo...   ")
-                        sys.stdout.flush()
+                        try:
+                            sys.stdout.write(f"\rAguardando {i}s para próximo ciclo...   ")
+                            sys.stdout.flush()
+                        except (IOError, AttributeError):
+                            pass
                         time.sleep(1)
                     
                     # Se parou, limpa e sai
-                    sys.stdout.write("\r" + " " * 40 + "\r")  
-                    sys.stdout.flush()
+                    try:
+                        sys.stdout.write("\r" + " " * 40 + "\r")  
+                        sys.stdout.flush()
+                    except (IOError, AttributeError):
+                        pass
             
             # Correção para garantir que o tempo bateu
             if (time.time() - ultimo_check) < INTERVALO:

@@ -174,7 +174,7 @@ def transferir(source_user, source_pass, target_user, target_pass, cenario_name,
             "cd_color": target_scenario.get("cd_color", ""),
             "tp_favorito": "N", # Resetar favorito
             "ds_permissao": 0,
-            "nm_cenario": new_name if new_name else f"{cenario_name} (CPY)",
+            "nm_cenario": new_name if new_name else (cenario_name if source_user.lower() != target_user.lower() else f"{cenario_name} (CPY)"),
             "id_grupo": 0,
             "sn_publico": "N", # Forçar privado
             "sn_avanco_automatico": target_scenario.get("sn_avanco_automatico", "N"),

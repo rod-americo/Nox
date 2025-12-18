@@ -63,7 +63,8 @@ class AppState:
                     loop.main(controller=self.loop_controller, args=args_to_pass)
                 except (Exception, SystemExit) as e:
                     # Captura erros de inicialização (prepare.py) ou runtime
-                    pass 
+                    logger.log_erro(f"Loop Thread Crashed: {e}")
+                    print(f"Loop Thread Crashed: {e}") 
                 finally:
                     self.loop_running = False
                     if on_exit_callback:
