@@ -179,8 +179,16 @@ def transferir(source_user, source_pass, target_user, target_pass, cenario_name,
             "sn_publico": "N", # Forçar privado
             "sn_avanco_automatico": target_scenario.get("sn_avanco_automatico", "N"),
             "colunas": target_scenario.get("colunas", []),
-            "filtros": target_scenario.get("filtros", {})
+            "filtros": target_scenario.get("filtros", {}).copy()
         }
+        
+        # Limpeza crítica: Remover ID do filtro para evitar conflito de dono/permissão
+        if "cd_id" in payload["filtros"]:
+            log_info(f"Limpando cd_id do filtro: {payload['filtros']['cd_id']}")
+            payload["filtros"]["cd_id"] = ""
+        
+        # Opcional: Limpar outras chaves se necessário
+        # if "id_exame_pedido" in payload["filtros"]: ...
         
     finally:
         session_src.stop()
