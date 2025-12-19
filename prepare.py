@@ -70,18 +70,32 @@ def preparar(cenarios: list[str]):
         # TOKEN
         # -------------------------------------------------------
         log_info("Extraindo token JWT e localStorage")
-        raw_ls = page.evaluate("() => ({...localStorage})")
+        
+        key = "laudo-remoto_current_user"
+        found = False
+        raw_ls = {}
 
-        # gravar localStorage bruto
+        # Retry logic: Aguardar token persistir no localStorage
+        for _ in range(20): # 10 segundos
+            raw_ls = page.evaluate("() => ({...localStorage})")
+            if key in raw_ls:
+                found = True
+                break
+            page.wait_for_timeout(500)
+
+        if not found:
+             # Tenta uma última vez ou loga o que tem
+             raw_ls = page.evaluate("() => ({...localStorage})")
+        
+        # Gravar localStorage (mesmo se falhar, para debug)
         config.LOCALSTORAGE_FILE.write_text(
             json.dumps(raw_ls, indent=2, ensure_ascii=False),
             encoding="utf-8"
         )
         log_ok(f"localStorage salvo em {config.LOCALSTORAGE_FILE}")
 
-        key = "laudo-remoto_current_user"
         if key not in raw_ls:
-            raise RuntimeError("Token não encontrado no localStorage")
+            raise RuntimeError("Token não encontrado no localStorage (Timeout aguardando persistência).")
 
         token = json.loads(raw_ls[key]).get("token")
         if not token:
