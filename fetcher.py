@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
 
 """
-fetcher.py — coleta da API Cockpit (Modelo 3 — Fila em Disco)
+fetcher.py — coleta da API Cockpit (Unificado: Nox + Munin)
 --------------------------------------------------------------
 
-Funções:
-    fetch_cenario(nome)  → {"HBR": [...], "HAC": [...]}
-    fetch_varios(lista)  → consolida resultados
+Modos de Operação:
+    1. Padrão (Nox): Extrai apenas ANs e separa por unidade.
+       Retorno: {"HBR": [...], "HAC": [...]}
+       
+    2. Raw/Munin (--raw): Baixa JSON completo e salva em disco.
+       Argumentos extras: --inicio, --fim
 
 Este módulo:
-    • NÃO imprime nada na tela
-    • NÃO interage com downloader
-    • Apenas retorna listas de ANs adequadas para o loop enqueue
+    • Em modo padrão, NÃO imprime nada na tela (exceto erros).
 """
 
 import sys
@@ -23,7 +24,13 @@ from pathlib import Path
 from math import ceil
 from datetime import datetime, timedelta
 
-from logger import log_info, log_erro, log_debug
+# Tenta importar tqdm para barra de progresso (apenas modo raw)
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
+
+from logger import log_info, log_erro, log_debug, log
 from config import (
     URL_BASE,
     SESSION_FILE,
@@ -31,6 +38,83 @@ from config import (
 )
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+# ============================================================
+# Helpers: Payload Dinâmico (Lógica Munin)
+# ============================================================
+
+def gerar_payload(dt_inicio: str, dt_fim: str):
+    """
+    Gera um payload padrão filtrando por data de pedido.
+    Formatos esperados: YYYY-MM-DD
+    """
+    if len(dt_inicio) == 10:
+        dt_inicio += "T00:00:00-03:00"
+    if len(dt_fim) == 10:
+        dt_fim += "T23:59:59-03:00"
+
+    return {
+        "cd_id": "",
+        "shortName": "dt_pedido",
+        "shortOrder": "-1",
+        "nm_notificacao": "",
+        "nm_paciente": "",
+        "nm_social_paciente": "",
+        "nm_unidade": "",
+        "cd_prontuario": "",
+        "id_exame_pedido": "",
+        "cd_atendimento_his": "",
+        "cd_acnumber": "",
+        "cd_pedido_his": "",
+        "tp_status": [],
+        "cd_item_pedido_his": "",
+        "nm_exame": "",
+        "nm_exame_Unidade": "",
+        "nm_setor_executante": [],
+        "tp_sexo": "",
+        "cd_unidade": [],
+        "nm_periodo_pedido": {"value": "outro", "label": "Outro"},
+        "dt_pedido": {"dt_inicio": dt_inicio, "dt_fim": dt_fim},
+        "nm_periodo_estudo": {"value": "", "label": ""},
+        "dt_imagem": {"dt_inicio": "", "dt_fim": ""},
+        "nm_periodo_imagem": {"value": "", "label": ""},
+        "dt_cadastro": {"dt_inicio": "", "dt_fim": ""},
+        "cd_modalidade": [],
+        "nm_origem_atendimento": "",
+        "nm_classificacao_risco": "",
+        "sla": [],
+        "tp_criticidade": [],
+        "imagem": [],
+        "inconformidade": [],
+        "ditado": [],
+        "digitado": [],
+        "revisado": [],
+        "laudado": [],
+        "assinado": [],
+        "liberado": [],
+        "entregue": [],
+        "id_origem_atendimento": [],
+        "id_medico_executante": "",
+        "id_medico_revisor": "",
+        "nm_medico_executante": "",
+        "nm_medico_revisor": "",
+        "nm_medico_solicitante": "",
+        "id_procedimento": [],
+        "nr_prontuario_hospitalar": "",
+        "id_convenio": [],
+        "id_setor_solicitante": [],
+        "id_medico_solicitante": "",
+        "dt_entrega": {"sn_datas_futuras": "", "dt_inicio": "", "dt_fim": ""},
+        "nm_periodo_entrega": {"value": "", "label": ""},
+        "exame": {"id_exame": [], "excluindo": False},
+        "cd_status_ia": [],
+        "id_risco": [],
+        "tp_impresso": "",
+        "tp_comentario": "",
+        "tp_anexo": "",
+        "tp_certificado": ""
+    }
 
 
 # ============================================================
@@ -49,12 +133,14 @@ def carregar_payload(nome_cenario):
     """Carrega payload correspondente ao cenário."""
     path = DATA_DIR / f"payload_{nome_cenario}.json"
     if not path.exists():
-        raise RuntimeError(f"Payload não encontrado: {path}")
+        # Retorna None para permitir fallback de datas no modo raw, 
+        # mas gera erro no modo Nox se for crucial.
+        return None
+        
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
         
-        # Lógica de atualização dinâmica de datas
-        # Se for "ontemhoje", forçamos as datas para Ontem 00:00 -> Hoje 23:59
+        # Lógica de atualização dinâmica de datas (Nox legacy)
         try:
             val = payload.get("nm_periodo_imagem", {}).get("value")
             if val == "ontemhoje":
@@ -71,8 +157,19 @@ def carregar_payload(nome_cenario):
                 msg_dt_fim = agora.strftime("%d/%m")
                 log_info(f"Payload {nome_cenario}: datas ajustadas ({msg_dt_ini} a {msg_dt_fim})")
                 
+            elif val == "mes":
+                agora = datetime.now()
+                inicio = agora - timedelta(days=30)
+                
+                dt_ini = inicio.strftime("%Y-%m-%dT00:00:00.000Z")
+                dt_fim = agora.strftime("%Y-%m-%dT23:59:59.000Z")
+                
+                payload["dt_imagem"]["dt_inicio"] = dt_ini
+                payload["dt_imagem"]["dt_fim"]    = dt_fim
+                
+                log_info(f"Payload {nome_cenario}: datas ajustadas (últimos 30 dias)")
+
         except Exception:
-            # Se falhar a lógica de data, segue com original
             pass
 
         return payload
@@ -94,7 +191,7 @@ def fetch_pagina(pagina, tamanho, cookies, headers, payload):
             cookies=cookies,
             headers=headers,
             json=payload,
-            timeout=30,
+            timeout=120,
             verify=False,
         )
     except Exception as e:
@@ -118,45 +215,32 @@ def fetch_pagina(pagina, tamanho, cookies, headers, payload):
 
 
 # ============================================================
-# Extrator AN + servidor
+# Modo Raw / Munin
 # ============================================================
 
-def extrair_an_servidor(registro):
+def fetch_raw_mode(nome_cenario, dt_inicio=None, dt_fim=None):
     """
-    Identifica:
-        AN = cd_item_pedido_his
-        Unidade:
-            "HAC"   → HAC
-            "HOBRA" → HBR
+    Comportamento original do Munin: baixa tudo e salva JSON.
     """
-    an = str(registro.get("cd_item_pedido_his") or "").strip()
-    if not an:
-        return None, None
+    log_info(f"=== FETCH RAW: {nome_cenario} ===")
+    
+    # 1. Resolver Payload
+    if dt_inicio and dt_fim:
+        log_info(f"Modo Data Range: {dt_inicio} até {dt_fim}")
+        payload = gerar_payload(dt_inicio, dt_fim)
+    else:
+        payload = carregar_payload(nome_cenario)
+        if not payload:
+            log_erro(f"ERRO: Payload '{nome_cenario}' não encontrado e datas não informadas.")
+            return
 
-    unidade = (registro.get("nm_unidade") or "").upper().strip()
+    # 2. Sessão
+    try:
+        s = carregar_session()
+    except Exception as e:
+        log_erro(str(e))
+        return
 
-    if unidade == "HAC":
-        return an, "HAC"
-    elif unidade == "HOBRA":
-        return an, "HBR"
-    return None, None
-
-
-# ============================================================
-# Fetch de cenário
-# ============================================================
-
-def fetch_cenario(nome_cenario: str) -> dict:
-    """
-    Retorna dicionário:
-        { "HBR": [...], "HAC": [...] }
-    """
-    resultado = {"HBR": [], "HAC": []}
-
-    log_info(f"Cenário {nome_cenario}: iniciando fetch…")
-
-    # sessão
-    s = carregar_session()
     cookies = {c["name"]: c["value"] for c in s.get("cookies", [])}
     headers = {
         "User-Agent": s["headers"]["User-Agent"],
@@ -164,68 +248,151 @@ def fetch_cenario(nome_cenario: str) -> dict:
         "Content-Type": "application/json",
     }
 
-    # payload
+    # 3. Paginação
+    tamanho = 25
+    pagina = 1
+    acumulado = []
+
+    # Página 1 (para estimar total)
+    dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
+    
+    if not dados:
+        log_info("Primeira página vazia ou erro.")
+        outfile = DATA_DIR / f"{nome_cenario.lower()}_full.json"
+        outfile.write_text("[]", encoding="utf-8")
+        return
+
+    acumulado.extend(dados)
+    total_registros = dados[0].get("quantidadePaginacao", len(dados))
+    total_paginas = ceil(total_registros / tamanho)
+    
+    log_info(f"Total estimado: {total_registros} registros em {total_paginas} páginas")
+
+    # Barra de Progresso (se disponível e útil)
+    pbar = None
+    usar_tqdm = (tqdm is not None) and (total_paginas > 5)
+    
+    if usar_tqdm:
+        pbar = tqdm(total=total_paginas, desc=nome_cenario, unit="pág")
+        pbar.update(1)
+
+    pagina += 1
+
+    # Demais páginas
+    while pagina <= total_paginas:
+        dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
+        if not dados:
+            break
+        acumulado.extend(dados)
+        
+        if pbar:
+            pbar.update(1)
+        elif pagina % 5 == 0 or pagina == total_paginas:
+            log_info(f"Progresso: {pagina}/{total_paginas} páginas")
+        pagina += 1
+
+    if pbar:
+        pbar.close()
+
+    # 4. Salvar
+    outfile = DATA_DIR / f"{nome_cenario.lower()}_full.json"
+    outfile.write_text(
+        json.dumps(acumulado, indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
+    log_info(f"Coleta concluída. Total: {len(acumulado)}")
+    log_info(f"Salvo em: {outfile.name}")
+
+
+# ============================================================
+# Extrator AN (Modo Nox)
+# ============================================================
+
+def extrair_an_servidor(registro):
+    an = str(registro.get("cd_item_pedido_his") or "").strip()
+    if not an:
+        return None, None
+    unidade = (registro.get("nm_unidade") or "").upper().strip()
+    if unidade == "HAC":
+        return an, "HAC"
+    elif unidade == "HOBRA":
+        return an, "HBR"
+    return None, None
+
+
+def fetch_cenario(nome_cenario: str) -> dict:
+    resultado = {"HBR": [], "HAC": []}
+    log_info(f"Cenário {nome_cenario}: iniciando fetch…")
+
+    try:
+        s = carregar_session()
+    except:
+        return resultado
+        
+    cookies = {c["name"]: c["value"] for c in s.get("cookies", [])}
+    headers = {
+        "User-Agent": s["headers"]["User-Agent"],
+        "Authorization": s["headers"]["Authorization"],
+        "Content-Type": "application/json",
+    }
+
+    # No modo Nox, payload é obrigatório do arquivo
     payload = carregar_payload(nome_cenario)
+    if not payload:
+        raise RuntimeError(f"Payload {nome_cenario} inexistente.")
 
     tamanho = 25
     pagina = 1
 
-    # primeira página
     dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
     if not dados:
-        log_info(f"{nome_cenario}: nenhum exame encontrado (0 resultados).")
+        log_info(f"{nome_cenario}: nenhum exame encontrado.")
         return resultado
 
     total_registros = dados[0].get("quantidadePaginacao", len(dados))
     total_paginas = max(1, ceil(total_registros / tamanho))
 
-    # processa página 1
     for r in dados:
         an, srv = extrair_an_servidor(r)
         if an and srv:
             resultado[srv].append(an)
 
     pagina += 1
-
-    # demais páginas
     while pagina <= total_paginas:
         dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
         if not dados:
             break
-
         for r in dados:
             an, srv = extrair_an_servidor(r)
             if an and srv:
                 resultado[srv].append(an)
-
         pagina += 1
 
     log_info(f"Cenário {nome_cenario}: {len(resultado['HBR'])} HBR, {len(resultado['HAC'])} HAC.")
     return resultado
 
 
-# ============================================================
-# Fetch consolidado
-# ============================================================
-
 def fetch_varios(cenarios: list[str]) -> dict:
-    """
-    Retorna:
-        { "HBR": [...], "HAC": [...] }
-    sem duplicatas, mantendo ordem.
-    """
     final = {"HBR": [], "HAC": []}
-
     for c in cenarios:
         parcial = fetch_cenario(c)
         final["HBR"].extend(parcial["HBR"])
         final["HAC"].extend(parcial["HAC"])
-
-    # remove duplicatas sem alterar ordem
+    
     final["HBR"] = list(dict.fromkeys(final["HBR"]))
     final["HAC"] = list(dict.fromkeys(final["HAC"]))
-
     return final
+
+
+# ============================================================
+# Wrapper de Compatibilidade (Munin)
+# ============================================================
+def api_fetch(nome_cenario, dt_inicio=None, dt_fim=None):
+    """
+    Wrapper para manter compatibilidade com munin/monitor.py
+    que chama api_fetch() esperando comportamento Raw.
+    """
+    return fetch_raw_mode(nome_cenario, dt_inicio, dt_fim)
 
 
 # ============================================================
@@ -235,28 +402,41 @@ def fetch_varios(cenarios: list[str]) -> dict:
 def main():
     parser = argparse.ArgumentParser(description="Fetcher Cockpit CLI")
     parser.add_argument("cenarios", nargs="+", help="Lista de cenários (ex: MONITOR HOBRA)")
-    parser.add_argument("--json", action="store_true", help="Saída JSON pura")
+    parser.add_argument("--json", action="store_true", help="Saída JSON pura (apenas ANs)")
+    parser.add_argument("--raw", action="store_true", help="Modo RAW: Salva JSON completo em disco (comportamento Munin)")
+    parser.add_argument("--inicio", type=str, help="Data inicio YYYY-MM-DD (apenas modo --raw)")
+    parser.add_argument("--fim", type=str, help="Data fim YYYY-MM-DD (apenas modo --raw)")
+    
     args = parser.parse_args()
 
-    # Silenciar logs se modo JSON
-    if args.json:
+    # Silenciar logs se modo JSON e não RAW
+    if args.json and not args.raw:
         import logger
         logger._out = lambda *args, **kwargs: None
 
     try:
+        # --- ROTA RAW (Munin) ---
+        if args.raw:
+            # Garante que log funciona
+            from logger import log_info
+            # log_info("=== MODO RAW ATIVADO ===")
+            for c in args.cenarios:
+                fetch_raw_mode(c, dt_inicio=args.inicio, dt_fim=args.fim)
+            return
+
+        # --- ROTA NOX (Padrão) ---
         dados = fetch_varios(args.cenarios)
         
         if args.json:
             print(json.dumps(dados, indent=2, ensure_ascii=False))
         else:
-            # Resumo simples (os logs detalhados já saem no stderr/stdout via log_info)
             total_hbr = len(dados["HBR"])
             total_hac = len(dados["HAC"])
             from logger import log_info
             log_info(f"Total consolidado: {total_hbr} HBR, {total_hac} HAC")
 
     except Exception as e:
-        if args.json:
+        if args.json and not args.raw:
             sys.stderr.write(f"ERRO: {e}\n")
             sys.exit(1)
         else:

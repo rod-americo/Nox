@@ -44,8 +44,12 @@ def preparar(cenarios: list[str]):
             log_erro(f"Erro ao salvar screenshot {name}: {e}")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--disable-ipv6"]
+        )
+        context = browser.new_context(ignore_https_errors=True)
+        page = context.new_page()
 
         # -------------------------------------------------------
         # LOGIN
@@ -194,8 +198,12 @@ def listar_cenarios() -> list[str]:
     cenarios_encontrados = []
     
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--disable-ipv6"]
+        )
+        context = browser.new_context(ignore_https_errors=True)
+        page = context.new_page()
 
         try:
             page.goto(config.URL_LOGIN, timeout=60_000)
@@ -258,8 +266,12 @@ def mapear_cenarios():
     log_info("Iniciando mapeamento de cenários...")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--disable-ipv6"]
+        )
+        context = browser.new_context(ignore_https_errors=True)
+        page = context.new_page()
 
         # -------------------------------------------------------
         # LOGIN (Simplificado)
