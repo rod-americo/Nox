@@ -195,30 +195,27 @@ def fetch_pagina(pagina, tamanho, cookies, headers, payload):
             verify=False,
         )
     except Exception as e:
-        log_erro(f"Erro de conexão página {pagina}: {e}")
-        return None
+        # Re-raise para ser tratado como erro fatal no loop
+        raise RuntimeError(f"Erro de conexão página {pagina}: {e}")
 
     if r.status_code != 200:
-        log_erro(f"Página {pagina} retornou status HTTP {r.status_code}")
-        return None
+        raise RuntimeError(f"Página {pagina} retornou status HTTP {r.status_code}")
 
     try:
         data = r.json()
         if not isinstance(data, list):
-            log_erro(f"Página {pagina}: retorno inesperado (não é lista).")
-            return []
+             raise RuntimeError(f"Página {pagina}: retorno inesperado (não é lista).")
         return data
 
     except Exception as e:
-        log_erro(f"Falha ao decodificar JSON da página {pagina}: {e}")
-        return []
+        raise RuntimeError(f"Falha ao decodificar JSON da página {pagina}: {e}")
 
 
 # ============================================================
 # Modo Raw / Munin
 # ============================================================
 
-def fetch_raw_mode(nome_cenario, dt_inicio=None, dt_fim=None):
+def fetch_raw_mode(nome_cenario, dt_inicio=None, dt_fim=None, no_tqdm=False):
     """
     Comportamento original do Munin: baixa tudo e salva JSON.
     """
@@ -268,31 +265,54 @@ def fetch_raw_mode(nome_cenario, dt_inicio=None, dt_fim=None):
     
     log_info(f"Total estimado: {total_registros} registros em {total_paginas} páginas")
 
+    import time
+    
     # Barra de Progresso (se disponível e útil)
     pbar = None
-    usar_tqdm = (tqdm is not None) and (total_paginas > 5)
+    # Só usa TQDM se não foi desativado explicitamente E se tem biblioteca E se tem páginas suficientes
+    usar_tqdm = (not no_tqdm) and (tqdm is not None) and (total_paginas > 5)
     
     if usar_tqdm:
         pbar = tqdm(total=total_paginas, desc=nome_cenario, unit="pág")
         pbar.update(1)
+    
+    last_log_time = time.time()
 
     pagina += 1
 
     # Demais páginas
+    # Demais páginas
     while pagina <= total_paginas:
-        dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
+        try:
+            dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
+        except Exception as e:
+            log_erro(f"ABORTANDO: {e}")
+            if pbar: pbar.close()
+            # Erro fatal: sai com código de erro par backfill.py detectar
+            sys.exit(1)
+
         if not dados:
+            # Se retornou vazio mas sem erro, pode ser fim da lista
             break
+            
         acumulado.extend(dados)
         
         if pbar:
             pbar.update(1)
-        elif pagina % 5 == 0 or pagina == total_paginas:
-            log_info(f"Progresso: {pagina}/{total_paginas} páginas")
+        else:
+            # Log periódico a cada 15 segundos
+            now = time.time()
+            if now - last_log_time > 15:
+                log_info(f"Progresso: {pagina}/{total_paginas} páginas ({(pagina/total_paginas)*100:.1f}%)")
+                last_log_time = now
+
         pagina += 1
 
     if pbar:
         pbar.close()
+    else:
+        # Log final se não usou barra
+        log_info(f"Progresso final: {total_paginas}/{total_paginas} páginas")
 
     # 4. Salvar
     outfile = DATA_DIR / f"{nome_cenario.lower()}_full.json"
@@ -392,7 +412,7 @@ def api_fetch(nome_cenario, dt_inicio=None, dt_fim=None):
     Wrapper para manter compatibilidade com munin/monitor.py
     que chama api_fetch() esperando comportamento Raw.
     """
-    return fetch_raw_mode(nome_cenario, dt_inicio, dt_fim)
+    return fetch_raw_mode(nome_cenario, dt_inicio, dt_fim, no_tqdm=True)
 
 
 # ============================================================
@@ -406,6 +426,7 @@ def main():
     parser.add_argument("--raw", action="store_true", help="Modo RAW: Salva JSON completo em disco (comportamento Munin)")
     parser.add_argument("--inicio", type=str, help="Data inicio YYYY-MM-DD (apenas modo --raw)")
     parser.add_argument("--fim", type=str, help="Data fim YYYY-MM-DD (apenas modo --raw)")
+    parser.add_argument("--no-tqdm", action="store_true", help="Desativa barra de progresso (útil para logs)")
     
     args = parser.parse_args()
 
@@ -421,7 +442,7 @@ def main():
             from logger import log_info
             # log_info("=== MODO RAW ATIVADO ===")
             for c in args.cenarios:
-                fetch_raw_mode(c, dt_inicio=args.inicio, dt_fim=args.fim)
+                fetch_raw_mode(c, dt_inicio=args.inicio, dt_fim=args.fim, no_tqdm=args.no_tqdm)
             return
 
         # --- ROTA NOX (Padrão) ---
