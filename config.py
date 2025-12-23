@@ -81,11 +81,14 @@ TMP_DIR = BASE_DIR / "tmp"
 # Diretório de progresso (.json por AN)
 PROGRESS_DIR = BASE_DIR / "progresso"
 
+# Diretório de logs
+LOG_DIR = BASE_DIR / "logs"
+
 # Diretório para payloads, sessão e demais dados da API Cockpit
 DATA_DIR = BASE_DIR / "data"
 
 # Garantir estrutura
-for d in [TMP_DIR, PROGRESS_DIR, DATA_DIR]:
+for d in [TMP_DIR, PROGRESS_DIR, DATA_DIR, LOG_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 

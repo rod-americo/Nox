@@ -20,7 +20,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 import config
-from logger import log_info, log_ok, log_erro
+from logger import log_info, log_ok, log_erro, set_logfile
 
 
 # ============================================================
@@ -30,7 +30,7 @@ from logger import log_info, log_ok, log_erro
 def preparar(cenarios: list[str]):
     log_info("Iniciando etapa preparatória (login + sessão + payloads)")
 
-    debug_dir = config.DATA_DIR / "debug"
+    debug_dir = config.LOG_DIR
     debug_dir.mkdir(parents=True, exist_ok=True)
 
     def take_screenshot(p, name):
@@ -54,21 +54,33 @@ def preparar(cenarios: list[str]):
         # -------------------------------------------------------
         # LOGIN
         # -------------------------------------------------------
-        log_info("Abrindo tela de login")
-        page.goto(config.URL_LOGIN, timeout=60_000)
-        take_screenshot(page, "1_login_page")
+        try:
+            log_info("Abrindo tela de login")
+            page.goto(config.URL_LOGIN, timeout=60_000)
+            take_screenshot(page, "1_login_page")
 
-        page.fill("#user", config.USUARIO)
-        take_screenshot(page, "2_user_filled")
-        page.click("#login-submit")
+            page.fill("#user", config.USUARIO)
+            take_screenshot(page, "2_user_filled")
+            page.click("#login-submit")
 
-        page.wait_for_selector("#password")
-        page.fill("#password", config.SENHA)
-        take_screenshot(page, "3_pass_filled")
-        page.click("#login-submit")
-        page.wait_for_load_state("networkidle")
-        log_ok("Login concluído")
-        take_screenshot(page, "4_login_success")
+            page.wait_for_selector("#password")
+            page.fill("#password", config.SENHA)
+            take_screenshot(page, "3_pass_filled")
+            page.click("#login-submit")
+            
+            page.wait_for_load_state("networkidle")
+            log_ok("Login concluído")
+            take_screenshot(page, "4_login_success")
+        except Exception as e:
+            # Em caso de erro, força screenshot mesmo se config for False
+            if not config.DEBUG_SCREENSHOTS:
+                try:
+                    p_path = debug_dir / "error_login_failure.png"
+                    page.screenshot(path=p_path)
+                    log_info(f"Screenshot de erro salvo: {p_path}")
+                except Exception as s_e:
+                    log_erro(f"Erro ao salvar screenshot de falha: {s_e}")
+            raise e
 
         # -------------------------------------------------------
         # TOKEN
@@ -348,8 +360,10 @@ def main():
         sys.exit(1)
 
     if "--mapear-cenarios" in sys.argv:
+        set_logfile(config.LOG_DIR / "prepare.log")
         mapear_cenarios()
     else:
+        set_logfile(config.LOG_DIR / "prepare.log")
         cenarios = [c.strip() for c in sys.argv[1:]]
         preparar(cenarios)
 

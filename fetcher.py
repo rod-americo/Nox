@@ -19,6 +19,7 @@ import sys
 import argparse
 import json
 import requests
+import time  # Importado globalmente para rate limiting
 import urllib3
 from pathlib import Path
 from math import ceil
@@ -39,12 +40,16 @@ from config import (
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-
 # ============================================================
 # Helpers: Payload Dinâmico (Lógica Munin)
 # ============================================================
 
-def gerar_payload(dt_inicio: str, dt_fim: str):
+# Mapeamento de Origens (Documentação):
+# 1, 2 = Eletivo
+# 3    = Urgente
+# 4    = Internado
+
+def gerar_payload(dt_inicio: str, dt_fim: str, origens: list = None):
     """
     Gera um payload padrão filtrando por data de pedido.
     Formatos esperados: YYYY-MM-DD
@@ -94,7 +99,7 @@ def gerar_payload(dt_inicio: str, dt_fim: str):
         "assinado": [],
         "liberado": [],
         "entregue": [],
-        "id_origem_atendimento": [],
+        "id_origem_atendimento": origens or [],
         "id_medico_executante": "",
         "id_medico_revisor": "",
         "nm_medico_executante": "",
@@ -116,10 +121,25 @@ def gerar_payload(dt_inicio: str, dt_fim: str):
         "tp_certificado": ""
     }
 
-
 # ============================================================
 # Helpers
 # ============================================================
+
+def gerar_payload_an(an: str):
+    """
+    Gera um payload focado na busca por um Accession Number específico.
+    Zera as datas para evitar filtragem temporal indesejada.
+    """
+    # Parte de um payload "vazio" (datas vazias)
+    payload = gerar_payload("", "")
+    
+    # Define o AN no campo correto
+    payload["cd_item_pedido_his"] = an
+    
+    # Algumas APIs exigem que se limpe explicitamente outros filtros ou
+    # que se defina um range de data longo se o backend for mal feito.
+    # Por enquanto, tentamos sem data. Se falhar, o usuário testará.
+    return payload
 
 def carregar_session():
     """Carrega sessão salva previamente. Falha → exceção clara."""
@@ -127,7 +147,6 @@ def carregar_session():
         return json.loads(Path(SESSION_FILE).read_text(encoding="utf-8"))
     except Exception as e:
         raise RuntimeError(f"Falha ao carregar sessão ({SESSION_FILE}): {e}")
-
 
 def carregar_payload(nome_cenario):
     """Carrega payload correspondente ao cenário."""
@@ -177,7 +196,6 @@ def carregar_payload(nome_cenario):
     except Exception as e:
         raise RuntimeError(f"Erro lendo payload {path}: {e}")
 
-
 # ============================================================
 # Paginador
 # ============================================================
@@ -210,12 +228,11 @@ def fetch_pagina(pagina, tamanho, cookies, headers, payload):
     except Exception as e:
         raise RuntimeError(f"Falha ao decodificar JSON da página {pagina}: {e}")
 
-
 # ============================================================
 # Modo Raw / Munin
 # ============================================================
 
-def fetch_raw_mode(nome_cenario, dt_inicio=None, dt_fim=None, no_tqdm=False):
+def fetch_raw_mode(nome_cenario, dt_inicio=None, dt_fim=None, no_tqdm=False, origens=None):
     """
     Comportamento original do Munin: baixa tudo e salva JSON.
     """
@@ -224,7 +241,9 @@ def fetch_raw_mode(nome_cenario, dt_inicio=None, dt_fim=None, no_tqdm=False):
     # 1. Resolver Payload
     if dt_inicio and dt_fim:
         log_info(f"Modo Data Range: {dt_inicio} até {dt_fim}")
-        payload = gerar_payload(dt_inicio, dt_fim)
+        if origens:
+            log_info(f"Filtro de Origens ID: {origens}")
+        payload = gerar_payload(dt_inicio, dt_fim, origens)
     else:
         payload = carregar_payload(nome_cenario)
         if not payload:
@@ -259,60 +278,48 @@ def fetch_raw_mode(nome_cenario, dt_inicio=None, dt_fim=None, no_tqdm=False):
         outfile.write_text("[]", encoding="utf-8")
         return
 
-    acumulado.extend(dados)
+    # Tenta estimar total se o backend enviar (MOCK ou HEADER)
     total_registros = dados[0].get("quantidadePaginacao", len(dados))
     total_paginas = ceil(total_registros / tamanho)
     
     log_info(f"Total estimado: {total_registros} registros em {total_paginas} páginas")
 
-    import time
-    
     # Barra de Progresso (se disponível e útil)
     pbar = None
-    # Só usa TQDM se não foi desativado explicitamente E se tem biblioteca E se tem páginas suficientes
     usar_tqdm = (not no_tqdm) and (tqdm is not None) and (total_paginas > 5)
     
     if usar_tqdm:
         pbar = tqdm(total=total_paginas, desc=nome_cenario, unit="pág")
         pbar.update(1)
     
-    last_log_time = time.time()
+    start_time = time.time()
+    last_log_time = start_time
 
-    pagina += 1
-
-    # Demais páginas
-    # Demais páginas
-    while pagina <= total_paginas:
-        try:
-            dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
-        except Exception as e:
-            log_erro(f"ABORTANDO: {e}")
-            if pbar: pbar.close()
-            # Erro fatal: sai com código de erro par backfill.py detectar
-            sys.exit(1)
-
+    while True:
         if not dados:
-            # Se retornou vazio mas sem erro, pode ser fim da lista
             break
             
         acumulado.extend(dados)
         
-        if pbar:
-            pbar.update(1)
-        else:
-            # Log periódico a cada 15 segundos
-            now = time.time()
-            if now - last_log_time > 15:
-                log_info(f"Progresso: {pagina}/{total_paginas} páginas ({(pagina/total_paginas)*100:.1f}%)")
-                last_log_time = now
+        # Log periódico a cada 10s
+        if time.time() - last_log_time > 10:
+            pc = (pagina / total_paginas * 100) if total_paginas > 1 else 0
+            if total_paginas > 1:
+                log_info(f"Progresso: {pc:.1f}% (Pág {pagina}/{total_paginas}) - {len(acumulado)} itens")
+            else:
+                log_info(f"Progresso: Página {pagina} - {len(acumulado)} itens")
+            last_log_time = time.time()
 
         pagina += 1
+        dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
+        
+        if usar_tqdm and pbar:
+             pbar.update(1)
 
     if pbar:
         pbar.close()
     else:
-        # Log final se não usou barra
-        log_info(f"Progresso final: {total_paginas}/{total_paginas} páginas")
+        log_info(f"Progresso final: {pagina-1}/{total_paginas} páginas")
 
     # 4. Salvar
     outfile = DATA_DIR / f"{nome_cenario.lower()}_full.json"
@@ -322,7 +329,6 @@ def fetch_raw_mode(nome_cenario, dt_inicio=None, dt_fim=None, no_tqdm=False):
     )
     log_info(f"Coleta concluída. Total: {len(acumulado)}")
     log_info(f"Salvo em: {outfile.name}")
-
 
 # ============================================================
 # Extrator AN (Modo Nox)
@@ -338,7 +344,6 @@ def extrair_an_servidor(registro):
     elif unidade == "HOBRA":
         return an, "HBR"
     return None, None
-
 
 def fetch_cenario(nome_cenario: str) -> dict:
     resultado = {"HBR": [], "HAC": []}
@@ -391,7 +396,6 @@ def fetch_cenario(nome_cenario: str) -> dict:
     log_info(f"Cenário {nome_cenario}: {len(resultado['HBR'])} HBR, {len(resultado['HAC'])} HAC.")
     return resultado
 
-
 def fetch_varios(cenarios: list[str]) -> dict:
     final = {"HBR": [], "HAC": []}
     for c in cenarios:
@@ -403,7 +407,6 @@ def fetch_varios(cenarios: list[str]) -> dict:
     final["HAC"] = list(dict.fromkeys(final["HAC"]))
     return final
 
-
 # ============================================================
 # Wrapper de Compatibilidade (Munin)
 # ============================================================
@@ -414,21 +417,41 @@ def api_fetch(nome_cenario, dt_inicio=None, dt_fim=None):
     """
     return fetch_raw_mode(nome_cenario, dt_inicio, dt_fim, no_tqdm=True)
 
-
 # ============================================================
 # CLI
 # ============================================================
 
 def main():
     parser = argparse.ArgumentParser(description="Fetcher Cockpit CLI")
-    parser.add_argument("cenarios", nargs="+", help="Lista de cenários (ex: MONITOR HOBRA)")
+    parser.add_argument("cenarios", nargs="*", help="Lista de cenários (ex: MONITOR HOBRA)")
     parser.add_argument("--json", action="store_true", help="Saída JSON pura (apenas ANs)")
     parser.add_argument("--raw", action="store_true", help="Modo RAW: Salva JSON completo em disco (comportamento Munin)")
     parser.add_argument("--inicio", type=str, help="Data inicio YYYY-MM-DD (apenas modo --raw)")
     parser.add_argument("--fim", type=str, help="Data fim YYYY-MM-DD (apenas modo --raw)")
+    parser.add_argument("--an", nargs="+", help="Busca por lista de Accession Numbers (ignora datas/cenários)")
     parser.add_argument("--no-tqdm", action="store_true", help="Desativa barra de progresso (útil para logs)")
+
+    # Filtros de Origem
+    parser.add_argument("--eletivo", action="store_true", help="Filtra por Eletivo (IDs 1, 2)")
+    parser.add_argument("--urgente", action="store_true", help="Filtra por Urgente (ID 3)")
+    parser.add_argument("--internado", action="store_true", help="Filtra por Internado (ID 4)")
     
     args = parser.parse_args()
+
+    # Validação: ou tem cenários ou tem AN
+    if not args.cenarios and not args.an:
+        parser.error("É necessário informar pelo menos um cenário ou usar --an")
+
+    # Compila lista de origens
+    origens_ids = []
+    if args.eletivo:
+        origens_ids.extend(["1", "2"])
+    if args.urgente:
+        origens_ids.append("3")
+    if args.internado:
+        origens_ids.append("4")
+    # Remove duplicatas e ordem
+    origens_ids = sorted(list(set(origens_ids))) if origens_ids else None
 
     # Silenciar logs se modo JSON e não RAW
     if args.json and not args.raw:
@@ -438,11 +461,81 @@ def main():
     try:
         # --- ROTA RAW (Munin) ---
         if args.raw:
-            # Garante que log funciona
-            from logger import log_info
+            # Garante que log funciona (já importado globalmente)
             # log_info("=== MODO RAW ATIVADO ===")
             for c in args.cenarios:
-                fetch_raw_mode(c, dt_inicio=args.inicio, dt_fim=args.fim, no_tqdm=args.no_tqdm)
+                fetch_raw_mode(c, dt_inicio=args.inicio, dt_fim=args.fim, no_tqdm=args.no_tqdm, origens=origens_ids)
+            return
+
+        # --- ROTA BUSCA POR AN ---
+        if args.an:
+            log_info(f"=== BUSCA POR LISTA DE ANs ({len(args.an)}) ===")
+            
+            try:
+                s = carregar_session()
+            except Exception as e:
+                log_erro(str(e))
+                return
+
+            cookies = {c["name"]: c["value"] for c in s.get("cookies", [])}
+            headers = {
+                "User-Agent": s["headers"]["User-Agent"],
+                "Authorization": s["headers"]["Authorization"],
+                "Content-Type": "application/json",
+            }
+
+            acumulado_ans = []
+
+            for i, an_atual in enumerate(args.an, 1):
+                log_info(f"[{i}/{len(args.an)}] Consultando AN: {an_atual} ...")
+                
+                payload = gerar_payload_an(an_atual)
+                
+                # Retry logic para 429
+                sucesso = False
+                tentativas = 0
+                max_tentativas = 3
+                
+                while tentativas < max_tentativas:
+                    try:
+                        # Pequeno delay preventivo entre requisições
+                        time.sleep(1)
+                        
+                        dados = fetch_pagina(1, 25, cookies, headers, payload)
+                        if dados:
+                            acumulado_ans.extend(dados)
+                            log_info(f"   -> Encontrado(s): {len(dados)} registro(s).")
+                        else:
+                            log_info("   -> Nenhum registro.")
+                        sucesso = True
+                        break
+                        
+                    except Exception as e:
+                        msg_erro = str(e)
+                        if "429" in msg_erro:
+                            log_erro(f"   -> Rate limit (429) atingido. Aguardando 60s... (Tentativa {tentativas+1}/{max_tentativas})")
+                            time.sleep(60)
+                            tentativas += 1
+                        else:
+                            log_erro(f"   -> Erro ao buscar AN {an_atual}: {e}")
+                            break
+                            
+                if not sucesso and tentativas == max_tentativas:
+                    log_erro(f"   -> Falha definitiva no AN {an_atual} após retentativas.")
+
+            # Salvar resultado consolidado
+            outfile = DATA_DIR / "ans_full.json"
+            outfile.write_text(
+                json.dumps(acumulado_ans, indent=2, ensure_ascii=False),
+                encoding="utf-8"
+            )
+            
+            log_info("=== FINALIZADO ===")
+            log_info(f"Total de registros encontrados: {len(acumulado_ans)}")
+            log_info(f"Arquivo salvo: {outfile}")
+            
+            # Opcional: imprimir stdout também se for pouco (mas o usuário pediu arquivo)
+            # print(json.dumps(acumulado_ans, indent=2, ensure_ascii=False))
             return
 
         # --- ROTA NOX (Padrão) ---
@@ -453,7 +546,7 @@ def main():
         else:
             total_hbr = len(dados["HBR"])
             total_hac = len(dados["HAC"])
-            from logger import log_info
+            # from logger import log_info  <-- Removido pois causa UnboundLocalError
             log_info(f"Total consolidado: {total_hbr} HBR, {total_hac} HAC")
 
     except Exception as e:
@@ -463,7 +556,6 @@ def main():
         else:
             log_erro(str(e))
             sys.exit(1)
-
 
 if __name__ == "__main__":
     main()
