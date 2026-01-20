@@ -46,6 +46,7 @@ CONSTANTES INTERNAS:
 
 import sys
 import os
+import platform
 import configparser
 from pathlib import Path
 
@@ -127,7 +128,13 @@ RADIANT_DICOM_DIR = Path(get("PATHS", "radiant_dicom", r"C:\DICOM"))
 OSIRIX_DIR = RADIANT_DICOM_DIR 
 
 
-OSIRIX_INCOMING  = Path(get("PATHS", "osirix_incoming", ""))
+# OS-dependent OsiriX Incoming
+if platform.system() == "Windows":
+    _incoming_path = get("PATHS", "osirix_incoming_mapped", "")
+else:
+    _incoming_path = get("PATHS", "osirix_incoming", "")
+
+OSIRIX_INCOMING = Path(_incoming_path) if _incoming_path else Path("")
 
 RADIANT_EXE = get("PATHS", "radiant_exe", r"C:\Program Files\RadiAntViewer\RadiAntViewer.exe")
 
