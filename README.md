@@ -83,11 +83,12 @@ Você precisará do **Git** para baixar o projeto.
     *   **Terminal**: `winget install --id Git.Git -e --source winget`
 
 *   **macOS 🍎**
-    1.  **Instale o Homebrew** (gerenciador de pacotes, caso não tenha):
+    *   **Opção 1 (Recomendada - Xcode Command Line Tools)**:
+        Abra o terminal e digite:
         ```bash
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        xcode-select --install
         ```
-    2.  **Instale o Git**:
+    *   **Opção 2 (Homebrew)**:
         ```bash
         brew install git
         ```
@@ -97,13 +98,13 @@ Você precisará do **Git** para baixar o projeto.
 1.  **Clone o repositório:**
     ```powershell
     git clone https://github.com/rod-americo/Nox.git
-    cd nox
+    cd Nox
     ```
 
 2.  **Crie e ative o ambiente virtual:**
     ```powershell
-    python -m venv .nox
-    .\.nox\Scripts\Activate
+    python -m venv venv
+    .\venv\Scripts\Activate
     ```
 
 3.  **Instale as dependências:**
@@ -117,13 +118,13 @@ Você precisará do **Git** para baixar o projeto.
 1.  **Clone o repositório:**
     ```bash
     git clone https://github.com/rod-americo/Nox.git
-    cd nox
+    cd Nox
     ```
 
 2.  **Crie e ative o ambiente virtual:**
     ```bash
-    python3 -m venv .nox
-    source .nox/bin/activate
+    python3 -m venv venv
+    source venv/bin/activate
     ```
 
 3.  **Instale as dependências:**
@@ -134,7 +135,7 @@ Você precisará do **Git** para baixar o projeto.
 
 ### Execução
 
-Sempre ative o ambiente virtual antes de rodar (`.\.nox\Scripts\Activate` ou `source .nox/bin/activate`).
+Sempre ative o ambiente virtual a partir do diretório do projeto antes de rodar (`.\venv\Scripts\Activate` ou `source venv/bin/activate`).
 
 #### Modo GUI (Interface Gráfica)
 ```bash
@@ -165,25 +166,28 @@ python nox.py --cli
 *   **`config.py`**: Carregador de configurações singleton.
 *   **`prepare.py`**: Automação *headless* (Playwright) para login e captura de tokens.
 
-### Utilitários de Cenário
+### Utilitários
 
-O Nox inclui ferramentas para gerenciar cenários do Cockpit:
-
-**1. Mapear Cenários (`prepare.py`)**
+#### Mapear Cenários (`prepare.py`)
 Lista todos os cenários disponíveis na conta configurada.
 ```bash
 python prepare.py --mapear-cenarios
 ```
 
-**2. Transferir/Clonar Cenários (`transfer_scenarios.py`)**
-Permite copiar cenários entre contas ou duplicá-los.
-```bash
-# Clonar na mesma conta:
-python transfer_scenarios.py --cenario "ORIGINAL" --novo-nome "COPIA"
+#### Download em Batch (`downloader.py`)
+Baixa exames em massa usando uma lista de _Accession Numbers_ (ANs) copiados para a área de transferência.
 
-# Transferir para outro usuário:
-python transfer_scenarios.py --cenario "ORIGINAL" --target-user "OUTRO_USER" --target-pass "SENHA"
-```
+1.  Copie os ANs (um por linha) para o Clipboard.
+2.  Execute:
+    ```bash
+    # Tenta HAC -> HBR automaticamente
+    python downloader.py
+    
+    # Força servidor específico
+    python downloader.py HAC
+    ```
+
+
 
 ---
 
