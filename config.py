@@ -176,7 +176,8 @@ if not USUARIO or not SENHA:
 LOOP_INTERVAL = getint("SETTINGS", "loop_interval", 150)
 MAX_EXAMES    = getint("SETTINGS", "max_exames", 50)
 SLIDER_MAX    = getint("SETTINGS", "slider_max", 200) # Limite superior do slider na GUI
-THEME         = get("SETTINGS", "theme", "dark").lower()
+_raw_theme = get("SETTINGS", "theme", "dark").lower()
+THEME = "light" if _raw_theme == "light" else "dark"
 VIEWER        = get("SETTINGS", "viewer", "radiant").lower()
 TITLE         = f"Assistente :: {VIEWER} :: Mezo"
 
