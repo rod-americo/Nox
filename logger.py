@@ -1,133 +1,219 @@
-# logger.py
+"""
+LOGGER v2 — PADRÃO OPERACIONAL
+
+INSTRUÇÕES IMPORTANTES (PARA HUMANOS E IA):
+
+1. OBJETIVO
+   Este módulo implementa um logger leve, determinístico e extensível,
+   adequado para automações, CLIs, bots, pipelines e serviços.
+
+2. PRINCÍPIOS DE PROJETO
+   - NÃO monkey-patch stdout/stderr por padrão.
+   - Separação clara entre:
+       a) saída de terminal (colorida),
+       b) arquivo de log (limpo),
+       c) GUI ou callback externo (opcional).
+   - Arquivo de log deve ser aberto UMA única vez.
+   - Falhas no logger NUNCA devem ser silenciosas.
+   - Logger não deve depender de JSON, BD ou infraestrutura externa.
+
+3. NÍVEIS DE LOG
+   - Níveis são hierárquicos e comparáveis.
+   - LOG_LEVEL controla a verbosidade global.
+   - Níveis customizados (OK, FINALIZADO, SKIP) fazem parte do domínio.
+
+4. STDOUT / STDERR
+   - stdout: fluxo normal e informativo.
+   - stderr: erros reais.
+   - Tee (duplicação stdout/stderr → arquivo) só deve ser ativado
+     explicitamente via enable_stdout_tee().
+
+5. USO RECOMENDADO
+   - Cada projeto deve configurar seu próprio arquivo de log.
+   - Logs estruturais/auditoria devem ir para arquivo ou BD externo.
+   - Logs de debug interativo podem usar tee.
+
+6. EXTENSÃO FUTURA (PERMITIDO)
+   - Handler para banco de dados.
+   - Inclusão de contexto (job_id, accession_number, request_id).
+   - Integração com collectors (rsyslog, Loki, etc).
+
+7. EXTENSÃO NÃO PERMITIDA
+   - Monkey-patch implícito de sys.stdout/sys.stderr.
+   - Captura silenciosa de exceções.
+   - Escrita em /tmp como destino principal.
+"""
+"""
+PACOTE: corerad_logging
+
+Este arquivo (logs.py) faz parte do pacote Python `corerad_logging`,
+instalado via pip (preferencialmente em modo editável: pip install -e .).
+
+USO CORRETO:
+    from corerad_logging.logs import log_info, log_erro, set_logfile, set_level
+
+NÃO COPIAR ESTE ARQUIVO PARA OUTROS PROJETOS.
+NÃO CRIAR VARIANTES LOCAIS.
+QUALQUER ALTERAÇÃO DEVE SER FEITA NO REPOSITÓRIO DO PACOTE.
+
+VERSÃO:
+    - Versionamento semântico (SemVer).
+    - Alterações compatíveis: v0.x.y
+    - Quebras de API: v1.0.0+
+
+ESCOPO:
+    - Logger base compartilhado entre múltiplos projetos.
+    - Não depende de JSON, BD ou frameworks externos.
+    - Projetado para automações, CLIs, serviços e pipelines.
+
+FONTE DA VERDADE:
+    Repositório Git: github.com/rod-americo/corerad_logging
+"""
 
 from datetime import datetime
 import sys
-
-# ====== Configuração ======
-
-DEBUG_MODE = False
-
-# ====== Cores ANSI ======
-# ====== Cores ANSI ======
 import os
+from typing import Optional, Callable, TextIO
+
+# =========================
+# Níveis de log (ordinais)
+# =========================
+
+LEVELS = {
+    "DEBUG": 10,
+    "SKIP": 15,
+    "INFO": 20,
+    "OK": 25,
+    "AVISO": 30,
+    "ERRO": 40,
+    "FINALIZADO": 50,
+}
+
+LOG_LEVEL = LEVELS.get(os.getenv("LOG_LEVEL", "INFO").upper(), 20)
+
+# =========================
+# Cores ANSI
+# =========================
 
 if os.environ.get("NO_COLOR"):
-    _COLORS = {
-        "DEBUG": "", "INFO": "", "OK": "", "AVISO": "", "ERRO": "",
-        "FINALIZADO": "", "SKIP": "", "RESET": ""
-    }
+    COLORS = {k: "" for k in LEVELS} | {"RESET": ""}
 else:
-    _COLORS = {
-        "DEBUG": "\033[35m",        # Roxo
-        "INFO": "\033[37m",         # Branco
-        "OK": "\033[32m",           # Verde
-        "AVISO": "\033[33m",        # Amarelo
-        "ERRO": "\033[91m",         # Vermelho
-        "FINALIZADO": "\033[96m",   # Ciano claro
-        "SKIP": "\033[90m",         # Cinza
-        "RESET": "\033[0m"
+    COLORS = {
+        "DEBUG": "\033[35m",
+        "INFO": "\033[37m",
+        "OK": "\033[32m",
+        "AVISO": "\033[33m",
+        "ERRO": "\033[91m",
+        "FINALIZADO": "\033[96m",
+        "SKIP": "\033[90m",
+        "RESET": "\033[0m",
     }
 
-# ====== Redirecionamento de Stdout/Stderr ======
+# =========================
+# Estado interno
+# =========================
 
-# ====== Redirecionamento de Stdout/Stderr ======
+_logfile_handle: Optional[TextIO] = None
+_gui_callback: Optional[Callable[[str, str, str], None]] = None
+_tee_enabled = False
 
 _original_stdout = sys.stdout
 _original_stderr = sys.stderr
-_redirection_active = False
-_logfile = None
-_gui_callback = None
 
-class StreamTee:
-    """Classe auxiliar para duplicar saída para o arquivo de log."""
-    def __init__(self, stream, is_stderr=False):
+# =========================
+# Tee opcional
+# =========================
+
+class TeeStream:
+    def __init__(self, stream: TextIO):
         self.stream = stream
-        self.is_stderr = is_stderr
-        self.encoding = getattr(stream, 'encoding', 'utf-8')
+        self.encoding = getattr(stream, "encoding", "utf-8")
 
-    def write(self, message):
-        # 1. Escreve no stream original (tela)
-        self.stream.write(message)
+    def write(self, msg: str):
+        self.stream.write(msg)
         self.stream.flush()
-
-        # 2. Escreve no arquivo de log (se configurado)
-        if _logfile:
-            try:
-                # Se for mensagem crua (não formatada pelo log()), grava direto
-                # Tentamos evitar duplicidade se log() já escreveu.
-                # Mas log() escreve direto no arquivo, então se log() usar _original_stdout,
-                # não passará por aqui.
-                # Se for um print() solto, passa por aqui.
-                with open(_logfile, "a", encoding="utf-8") as f:
-                    f.write(message)
-            except:
-                pass
+        if _logfile_handle:
+            _logfile_handle.write(msg)
 
     def flush(self):
         self.stream.flush()
-        if _logfile:
-            try:
-                with open(_logfile, "a", encoding="utf-8") as f:
-                    f.flush()
-            except:
-                pass
-    
+        if _logfile_handle:
+            _logfile_handle.flush()
+
     def isatty(self):
         return self.stream.isatty()
 
-def set_gui_callback(func):
-    """Registra uma função(msg, tipo) para receber logs na GUI."""
+# =========================
+# Configuração pública
+# =========================
+
+def set_level(level: str):
+    global LOG_LEVEL
+    LOG_LEVEL = LEVELS.get(level.upper(), LOG_LEVEL)
+
+def set_logfile(path: str):
+    global _logfile_handle
+    _logfile_handle = open(path, "a", encoding="utf-8", buffering=1)
+
+def enable_stdout_tee():
+    global _tee_enabled
+    if not _tee_enabled:
+        sys.stdout = TeeStream(_original_stdout)
+        sys.stderr = TeeStream(_original_stderr)
+        _tee_enabled = True
+
+def set_gui_callback(func: Callable[[str, str, str], None]):
     global _gui_callback
     _gui_callback = func
 
-def set_logfile(path):
-    """Define arquivo de destino e ativa redirecionamento de stdout/stderr."""
-    global _logfile, _redirection_active
-    _logfile = path
-    
-    if not _redirection_active:
-        sys.stdout = StreamTee(_original_stdout)
-        sys.stderr = StreamTee(_original_stderr, is_stderr=True)
-        _redirection_active = True
+def close_logger():
+    global _logfile_handle
+    if _logfile_handle:
+        _logfile_handle.close()
+        _logfile_handle = None
 
-# ====== Função principal ======
-def log(msg: str, tipo: str = "INFO") -> None:
+# =========================
+# Core do logger
+# =========================
+
+def log(msg: str, tipo: str = "INFO"):
     tipo = tipo.upper()
-    if tipo == "DEBUG" and not DEBUG_MODE:
+    level = LEVELS.get(tipo, LEVELS["INFO"])
+
+    if level < LOG_LEVEL:
         return
 
     ts = datetime.now().strftime("%H:%M:%S")
-    cor_msg = _COLORS.get(tipo, "")
-    cor_ts = _COLORS["RESET"]
-    reset = _COLORS["RESET"]
-    
-    # Usa os streams ORIGINAIS para evitar passar pelo StreamTee (e duplicar no arquivo)
+    color = COLORS.get(tipo, "")
+    reset = COLORS["RESET"]
+
     stream = _original_stderr if tipo == "ERRO" else _original_stdout
 
-    # 1. Terminal (Colorido)
-    print(f"{cor_ts}[{ts}] {cor_msg}[{tipo}] {msg}{reset}", file=stream, flush=True)
+    # Terminal
+    print(f"[{ts}] {color}[{tipo}] {msg}{reset}", file=stream, flush=True)
 
-    # 2. GUI (se houver)
+    # GUI
     if _gui_callback:
         try:
             _gui_callback(ts, tipo, msg)
-        except Exception:
-            pass
+        except Exception as e:
+            _original_stderr.write(f"[LOGGER][GUI ERROR] {e}\n")
 
-    # 3. Arquivo (Limpo)
-    if _logfile:
+    # Arquivo
+    if _logfile_handle:
         try:
-            with open(_logfile, "a", encoding="utf-8") as f:
-                f.write(f"[{ts}] [{tipo}] {msg}\n")
-        except Exception:
-            pass
+            _logfile_handle.write(f"[{ts}] [{tipo}] {msg}\n")
+        except Exception as e:
+            _original_stderr.write(f"[LOGGER][FILE ERROR] {e}\n")
 
-# ====== Wrappers por nível ======
-def log_debug(msg: str):       log(msg, "DEBUG")
-def log_info(msg: str):        log(msg, "INFO")
-def log_ok(msg: str):          log(msg, "OK")
-def log_aviso(msg: str):       log(msg, "AVISO")
-def log_erro(msg: str):        log(msg, "ERRO")
-def log_finalizado(msg: str):  log(msg, "FINALIZADO")
-def log_skip(msg: str):        log(msg, "SKIP")
-def log_ignorado(msg: str):    log(msg, "DEBUG")
+# =========================
+# Wrappers semânticos
+# =========================
+
+def log_debug(msg):      log(msg, "DEBUG")
+def log_info(msg):       log(msg, "INFO")
+def log_ok(msg):         log(msg, "OK")
+def log_aviso(msg):      log(msg, "AVISO")
+def log_erro(msg):       log(msg, "ERRO")
+def log_finalizado(msg): log(msg, "FINALIZADO")
+def log_skip(msg):       log(msg, "SKIP")

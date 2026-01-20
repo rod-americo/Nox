@@ -1,5 +1,6 @@
 flet
-requests
 playwright
-tqdm
 pydicom
+requests
+tqdm
+urllib3
