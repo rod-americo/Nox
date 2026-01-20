@@ -9,35 +9,46 @@ port = 1000
 path = WADO/AETILE
 
 [PATHS]
-# Onde os exames serão armazenados (Persistent) ou Temporários (Transient)
-# Windows:
-radiant_dicom = C:\DICOM
-# Mac:
-# radiant_dicom = /Users/SEU_USER/Documents/DICOM
+# --- Configuração de Caminhos ---
 
-# (Opcional) Apenas para OsiriX/Horos: Pasta monitorada pelo viewer
-# Windows:
-# osirix_incoming = W:\
-# Mac:
-# osirix_incoming = /Users/SEU_USER/Documents/OsiriX Data/Incoming
+# [MacOS/Linux] Caminho da pasta de entrada do OsiriX
+# Geralmente: /Users/SEU_USER/Documents/OsiriX Data.nosync/INCOMING.noindex
+osirix_incoming = /Users/user/OsiriX Data.nosync/INCOMING.noindex
 
-# Caminho do executável (Apenas para RadiAnt - Windows Only)
+# [Windows] Caminho da pasta de entrada mapeada (Network Drive) ou local
+# Se o Nox estiver rodando no Windows acessando o Mac via rede:
+osirix_incoming_mapped = X:\
+
+# [Windows] Caminho do executável do RadiAnt Viewer
 radiant_exe = C:\Program Files\RadiAntViewer\RadiAntViewer.exe
+
+# [Windows] Diretório onde salvar arquivos DICOM para o RadiAnt ler
 radiant_dicom = C:\DICOM
 
 [SETTINGS]
+# Número de threads simultâneas para download
 threads = 15
+# Número de tentativas em caso de falha de download
 retries = 4
+# Tempo de espera (segundos) entre retry
 retry_wait = 30
+# Intervalo do loop de verificação (segundos)
 loop_interval = 90
+# Limite máximo de exames por ciclo
 max_exames = 1000
+# Limite visual do slider na interface gráfica
 slider_max = 1000
-theme = system
-title = Assistente :: RadiAnt :: Mezo
+# Tema da interface (light ou dark). 
+theme = dark
+
+# Viewer padrão a ser utilizado: 'osirix' ou 'radiant'
 viewer = osirix
+
+# Lista de cenários (Worklists) a monitorar
+# Deve corresponder EXATAMENTE ao texto na interface web do Cockpit
 scenarios = ["MONITOR", "MONITOR_RX"]
 
 [AUTH]
+# Credenciais de acesso ao Cockpit
 user = SEU_USUARIO
 pass = SUA_SENHA
-

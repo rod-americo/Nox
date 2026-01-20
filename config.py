@@ -179,7 +179,8 @@ SLIDER_MAX    = getint("SETTINGS", "slider_max", 200) # Limite superior do slide
 _raw_theme = get("SETTINGS", "theme", "dark").lower()
 THEME = "light" if _raw_theme == "light" else "dark"
 VIEWER        = get("SETTINGS", "viewer", "radiant").lower()
-TITLE         = f"Assistente :: {VIEWER} :: Mezo"
+_viewer_display = "OsiriX" if VIEWER == "osirix" else "RadiAnt"
+TITLE         = f"Assistente :: {_viewer_display} :: Mezo"
 
 if VIEWER == "radiant":
     RADIANT_DICOM_DIR.mkdir(parents=True, exist_ok=True)
