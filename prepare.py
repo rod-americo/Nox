@@ -17,10 +17,11 @@ Uso:
 import json
 import sys
 from pathlib import Path
+import re
 from playwright.sync_api import sync_playwright, TimeoutError
 
 import config
-from logger import log_info, log_ok, log_erro, set_logfile
+from logger import log_info, log_ok, log_erro, log_debug, set_logfile
 
 
 # ============================================================
@@ -147,7 +148,7 @@ def preparar(cenarios: list[str]):
         # LOOP DE CENÁRIOS
         # -------------------------------------------------------
         for nome in cenarios:
-            log_info(f"Processando cenário: {nome}")
+            log_info(f"Processando cenário: {nome}...")
 
             captured_payload = None
 
@@ -172,8 +173,11 @@ def preparar(cenarios: list[str]):
 
             # clicar cenário
             try:
-                log_info(f"Clicando em '{nome}' (repr={repr(nome)})")
-                page.get_by_text(nome, exact=False).click()
+                log_debug(f"Clicando em '{nome}' (repr={repr(nome)})")
+                # Regex: Início(^) + Espaços Opcionais + Nome + Espaços Opcionais + Fim($)
+                # Isso evita que MONITOR pegue MONITOR_RX, mas aceita " MONITOR "
+                pattern = re.compile(rf"^\s*{re.escape(nome)}\s*$", re.IGNORECASE)
+                page.get_by_text(pattern).click()
             except Exception as e:
                 log_erro(f"Cenário '{nome}' (repr={repr(nome)}) não encontrado na interface (Click falhou): {e}")
                 continue
@@ -200,7 +204,8 @@ def preparar(cenarios: list[str]):
                 json.dumps(captured_payload, indent=2, ensure_ascii=False),
                 encoding="utf-8"
             )
-            log_ok(f"Payload salvo: {outfile}")
+            log_debug(f"Payload salvo em: {outfile}")
+            log_ok("Payload salvo.")
 
             botao_menu = nome
 
