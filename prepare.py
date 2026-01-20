@@ -172,7 +172,8 @@ def preparar(cenarios: list[str]):
 
             # clicar cenário
             try:
-                page.get_by_text(nome, exact=True).click()
+                log_info(f"Clicando em '{nome}' (repr={repr(nome)})")
+                page.get_by_text(nome, exact=False).click()
             except Exception as e:
                 log_erro(f"Cenário '{nome}' (repr={repr(nome)}) não encontrado na interface (Click falhou): {e}")
                 continue
