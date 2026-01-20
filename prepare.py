@@ -17,7 +17,7 @@ Uso:
 import json
 import sys
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError
 
 import config
 from logger import log_info, log_ok, log_erro, set_logfile
@@ -173,10 +173,15 @@ def preparar(cenarios: list[str]):
             # clicar cenário
             try:
                 page.get_by_text(nome, exact=True).click()
-                page.wait_for_load_state("networkidle")
-            except Exception:
-                log_erro(f"Cenário '{nome}' não encontrado na interface")
+            except Exception as e:
+                log_erro(f"Cenário '{nome}' não encontrado na interface (Click falhou): {e}")
                 continue
+
+            try:
+                page.wait_for_load_state("networkidle")
+            except Exception as e:
+                log_aviso(f"Timeout/Erro aguardando carregamento após clicar em '{nome}': {e}")
+                # Não faz continue, tenta capturar payload assim mesmo
 
             # aguardar payload
             for _ in range(60):
