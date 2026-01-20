@@ -113,7 +113,7 @@ Você precisará do **Git** para baixar o projeto.
     playwright install chromium
     ```
 
-#### macOS / Linux 🍎🐧
+#### macOS 🍎
 
 1.  **Clone o repositório:**
     ```bash
