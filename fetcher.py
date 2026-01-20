@@ -22,6 +22,7 @@ import requests
 import time  # Importado globalmente para rate limiting
 import urllib3
 from pathlib import Path
+import time
 from math import ceil
 from datetime import datetime, timedelta
 
@@ -391,6 +392,12 @@ def fetch_cenario(nome_cenario: str) -> dict:
             an, srv = extrair_an_servidor(r)
             if an and srv:
                 resultado[srv].append(an)
+        
+        # Log de progresso a cada 2 páginas ou se for a última
+        if pagina % 2 == 0 or pagina == total_paginas:
+             total_atual = len(resultado['HBR']) + len(resultado['HAC'])
+             log_info(f"[{nome_cenario}] Baixando página {pagina}/{total_paginas} (Total parcial: {total_atual})")
+             
         pagina += 1
 
     # log_info(f"Cenário {nome_cenario}: {len(resultado['HBR'])} HBR, {len(resultado['HAC'])} HAC.")
