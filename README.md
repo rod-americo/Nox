@@ -96,7 +96,7 @@ Você precisará do **Git** para baixar o projeto.
 
 1.  **Clone o repositório:**
     ```powershell
-    git clone https://github.com/rod-americo/nox.git
+    git clone https://github.com/rod-americo/Nox.git
     cd nox
     ```
 
@@ -116,7 +116,7 @@ Você precisará do **Git** para baixar o projeto.
 
 1.  **Clone o repositório:**
     ```bash
-    git clone https://github.com/rod-americo/nox.git
+    git clone https://github.com/rod-americo/Nox.git
     cd nox
     ```
 
