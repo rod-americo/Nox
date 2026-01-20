@@ -189,9 +189,9 @@ try:
 except:
     # Fallback: Vírgula ou Espaço
     if "," in _raw_scenarios:
-        SCENARIOS = [s.strip() for s in _raw_scenarios.split(",") if s.strip()]
+        SCENARIOS = [s.strip().strip('"\'') for s in _raw_scenarios.split(",") if s.strip()]
     else:
-        SCENARIOS = _raw_scenarios.split()
+        SCENARIOS = [s.strip().strip('"\'') for s in _raw_scenarios.split()]
 
 _storage_conf = get("SETTINGS", "storage_mode", "").lower()
 if _storage_conf in ["transient", "persistent"]:
