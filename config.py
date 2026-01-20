@@ -177,8 +177,8 @@ LOOP_INTERVAL = getint("SETTINGS", "loop_interval", 150)
 MAX_EXAMES    = getint("SETTINGS", "max_exames", 50)
 SLIDER_MAX    = getint("SETTINGS", "slider_max", 200) # Limite superior do slider na GUI
 THEME         = get("SETTINGS", "theme", "dark").lower()
-TITLE         = get("SETTINGS", "title", "RadiAnt Assistant")
 VIEWER        = get("SETTINGS", "viewer", "radiant").lower()
+TITLE         = f"Assistente :: {VIEWER} :: Mezo"
 
 if VIEWER == "radiant":
     RADIANT_DICOM_DIR.mkdir(parents=True, exist_ok=True)
