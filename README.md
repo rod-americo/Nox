@@ -189,7 +189,7 @@ python transfer_scenarios.py --cenario "ORIGINAL" --target-user "OUTRO_USER" --t
 
 ## 📋 Requisitos
 
-*   Python 3.10+
+*   Python 3.9+
 *   Dependências (instale via `pip install -r requirements.txt` com o ambiente virtual ativado):
     *   `flet`
     *   `requests`
