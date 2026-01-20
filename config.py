@@ -51,7 +51,7 @@ import configparser
 from pathlib import Path
 
 # === Versão do Aplicativo ===
-VERSION = "1.0.4"
+VERSION = "1.0.5"
 
 # === Caminho base e arquivo INI ===
 BASE_DIR = Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve().parent
@@ -123,9 +123,7 @@ RETRY_ESPERA = int(get("SETTINGS", "retry_wait", "30"))
 # ============================================================
 
 # Onde salvar os DICOMs (C:\DICOM ou Network Share)
-RADIANT_DICOM_DIR = Path(get("PATHS", "radiant_dicom", r"C:\DICOM"))
-# Alias usado por alguns scripts antigos ou user preference
-OSIRIX_DIR = RADIANT_DICOM_DIR 
+RADIANT_DICOM_DIR = Path(get("PATHS", "radiant_dicom", r"C:\DICOM")) 
 
 
 # OS-dependent OsiriX Incoming
