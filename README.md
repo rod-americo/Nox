@@ -41,13 +41,14 @@ user = SEU_USUARIO
 pass = SUA_SENHA
 
 [PATHS]
-# Onde os exames serão armazenados (Persistent) ou Temporários (Transient)
-radiant_dicom = C:\DICOM
-# (Opcional) Apenas para OsiriX/Horos: Pasta monitorada pelo viewer
-osirix_incoming = /Users/joedoe/Documents/OsiriX Data/Incoming
+# [MacOS/Linux] Caminho da pasta de entrada do OsiriX
+osirix_incoming = /Users/rodrigo/OsiriX Data.nosync/INCOMING.noindex
+# [Windows] Caminho da pasta de entrada mapeada (Network Drive) ou local
+osirix_incoming_mapped = W:\
 
-# Caminho do executável (Apenas para RadiAnt)
+# Caminhos RadiAnt (Windows Only)
 radiant_exe = C:\Program Files\RadiAntViewer\RadiAntViewer.exe
+radiant_dicom = C:\DICOM
 
 [SETTINGS]
 # Intervalo de verificação (segundos)
@@ -57,12 +58,10 @@ max_exames = 50
 slider_max = 200
 # Threads de download simultâneo
 threads = 15
-# Tema da interface: dark ou light
+# Tema da interface (light ou dark) - Default: dark
 theme = dark
-# Título da Janela
-title = Nox Assistant
 # Visualizador preferencial: radiant ou osirix
-viewer = radiant
+viewer = osirix
 # Lista de Cenários (separados por vírgula ou JSON)
 scenarios = ["MONITOR", "MONITOR_RX"]
 ```
