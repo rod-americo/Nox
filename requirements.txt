@@ -3,4 +3,4 @@ playwright
 pydicom
 requests
 tqdm
-urllib3
+

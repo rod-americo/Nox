@@ -20,7 +20,7 @@ import argparse
 import json
 import requests
 import time  # Importado globalmente para rate limiting
-import urllib3
+# import urllib3  <-- Removido para evitar conflito de versão (usamos via requests)
 from pathlib import Path
 import time
 from math import ceil
@@ -39,7 +39,11 @@ from config import (
     DATA_DIR,
 )
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# Silenciar aviso de InsecureRequestWarning (SSL verify=False)
+try:
+    requests.packages.urllib3.disable_warnings(requests.packages.urllib3.exceptions.InsecureRequestWarning)
+except:
+    pass
 
 # ============================================================
 # Helpers: Payload Dinâmico (Lógica Munin)
