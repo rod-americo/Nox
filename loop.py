@@ -21,11 +21,11 @@ import time
 import shutil
 import argparse
 import threading
+import subprocess
 from datetime import datetime
 
 import config
 from logger import log_info, log_erro
-import prepare
 import fetcher
 import downloader
 
@@ -245,14 +245,25 @@ def main(**kwargs):
     limpar_antigos()
 
     # 1) PREPARE (Executa apenas uma vez)
+    # 1) PREPARE (Executa apenas uma vez)
     if not args.no_prepare:
         try:
-            prepare.preparar(cenarios)
-        except Exception as e:
-            log_erro(f"Falha fatal no prepare.py: {e}")
-            log_erro(f"Falha fatal no prepare.py: {e}")
-            # Se tiver controller (GUI), não dar sys.exit total, apenas raise para o loop pegar
+            # Invoca prepare.py como subprocesso para isolar contexto (Playwright/Async)
+            # Passa cenários como argumentos flat (separados por espaço)
+            cmd = [sys.executable, "prepare.py", *cenarios]
+            log_info(f"Executando processo de preparação...")
+            
+            subprocess.run(cmd, check=True)
+            
+        except subprocess.CalledProcessError as e:
+            log_erro(f"Falha fatal no prepare.py (Exit Code {e.returncode})")
+            # Se tiver controller (GUI), raise para ser tratado
             if 'controller' in kwargs: 
+                raise RuntimeError(f"Prepare falhou com código {e.returncode}")
+            sys.exit(1)
+        except Exception as e:
+            log_erro(f"Erro ao invocar prepare.py: {e}")
+            if 'controller' in kwargs:
                 raise e
             sys.exit(1)
     else:
