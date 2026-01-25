@@ -20,8 +20,10 @@ from pathlib import Path
 import re
 from playwright.sync_api import sync_playwright, TimeoutError
 
+from datetime import datetime, timedelta
 import config
 from logger import log_info, log_ok, log_erro, log_debug, set_logfile
+from fetcher import SCENARIO_RULES, gerar_payload
 
 
 # ============================================================
@@ -136,80 +138,49 @@ def preparar(cenarios: list[str]):
         log_ok(f"Sessão salva em {config.SESSION_FILE}")
 
         # -------------------------------------------------------
-        # ABRIR WORKLIST
+        # ABRIR WORKLIST (Não é mais necessário para login, apenas se quiséssemos validar acesso)
         # -------------------------------------------------------
-        log_info("Abrindo Worklist")
-        page.goto(config.URL_WORKLIST)
-        page.wait_for_load_state("networkidle")
+        # log_info("Abrindo Worklist")
+        # page.goto(config.URL_WORKLIST)
+        # page.wait_for_load_state("networkidle")
 
-        botao_menu = "Cenários"
+        log_ok("Autenticação renovada com sucesso (Sessão + LocalStorage).")
 
         # -------------------------------------------------------
-        # LOOP DE CENÁRIOS
+        # DADOS / PAYLOADS
         # -------------------------------------------------------
-        for nome in cenarios:
-            log_info(f"Processando cenário: {nome}...")
+        if not cenarios:
+             log_info("Nenhum cenário solicitado. Apenas login realizado.")
+             return
 
-            captured_payload = None
+        log_info(f"Gerando payloads para: {cenarios}")
+        
+        # Datas Padrão (D-1 a D0)
+        agora = datetime.now()
+        ontem = agora - timedelta(days=1)
+        dt_ini = ontem.strftime("%Y-%m-%d")
+        dt_fim = agora.strftime("%Y-%m-%d")
 
-            # interceptador
-            def intercept(req):
-                nonlocal captured_payload
-                if "/worklist/listar" in req.url and req.method == "POST":
-                    try:
-                        captured_payload = req.post_data_json
-                    except Exception:
-                        pass
+        data_dir = config.DATA_DIR
+        data_dir.mkdir(parents=True, exist_ok=True)
 
-            page.on("request", intercept)
-
-            # abrir menu
-            try:
-                page.get_by_role("button", name=botao_menu).click()
-                page.wait_for_selector("#scene_content")
-            except Exception:
-                log_erro(f"Falha ao abrir menu '{botao_menu}'")
+        for c in cenarios:
+            rule = SCENARIO_RULES.get(c)
+            if not rule:
+                log_erro(f"Cenário desconhecido: {c}. Ignorando.")
                 continue
-
-            # clicar cenário
+            
             try:
-                log_debug(f"Clicando em '{nome}' (repr={repr(nome)})")
-                # Regex: Início(^) + Espaços Opcionais + Nome + Espaços Opcionais + Fim($)
-                # Isso evita que MONITOR pegue MONITOR_RX, mas aceita " MONITOR "
-                pattern = re.compile(rf"^\s*{re.escape(nome)}\s*$", re.IGNORECASE)
-                page.get_by_text(pattern).click()
+                payload = gerar_payload(dt_ini, dt_fim, rule)
+                outfile = data_dir / f"payload_{c}.json"
+                outfile.write_text(
+                    json.dumps(payload, indent=2, ensure_ascii=False),
+                    encoding="utf-8"
+                )
+                log_ok(f"Payload salvo: {outfile}")
             except Exception as e:
-                log_erro(f"Cenário '{nome}' (repr={repr(nome)}) não encontrado na interface (Click falhou): {e}")
-                continue
+                log_erro(f"Erro ao gerar payload {c}: {e}")
 
-            try:
-                page.wait_for_load_state("networkidle")
-            except Exception as e:
-                log_aviso(f"Timeout/Erro aguardando carregamento após clicar em '{nome}': {e}")
-                # Não faz continue, tenta capturar payload assim mesmo
-
-            # aguardar payload
-            for _ in range(60):
-                if captured_payload:
-                    break
-                page.wait_for_timeout(100)
-
-            if not captured_payload:
-                log_erro(f"Não foi possível capturar payload do cenário {nome}")
-                continue
-
-            # salvar
-            outfile = config.DATA_DIR / f"payload_{nome}.json"
-            outfile.write_text(
-                json.dumps(captured_payload, indent=2, ensure_ascii=False),
-                encoding="utf-8"
-            )
-            log_debug(f"Payload salvo em: {outfile}")
-            log_ok("Payload salvo.")
-
-            botao_menu = nome
-
-        log_ok("Captura concluída.")
 
 
 

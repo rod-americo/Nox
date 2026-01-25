@@ -54,17 +54,82 @@ except:
 # 3    = Urgente
 # 4    = Internado
 
-def gerar_payload(dt_inicio: str, dt_fim: str, origens: list = None):
-    """
-    Gera um payload padrão filtrando por data de pedido.
-    Formatos esperados: YYYY-MM-DD
-    """
-    if len(dt_inicio) == 10:
-        dt_inicio += "T00:00:00-03:00"
-    if len(dt_fim) == 10:
-        dt_fim += "T23:59:59-03:00"
+# ============================================================
+# CONSTANTES DE REGRAS (SCENARIO_RULES)
+# ============================================================
+SCENARIO_RULES = {
+    # 1. MONITOR (CT/MR/US - Urgente/Internado - Não Assinado)
+    "MONITOR": {
+        "modalidades": ["CT", "MR", "US"],
+        "origens": ["3", "4"],  # 3=Urgente, 4=Internado
+        "date_field": "dt_imagem",
+        "filtros_extra": {
+            "imagem": ["S"],
+            "assinado": ["N"],
+            "inconformidade": ["N"],
+        }
+    },
+    
+    # 2. MONITOR RX (Raio-X - Apenas Internado - Lista Específica de Exames)
+    "MONITOR_RX": {
+        "modalidades": [],
+        "origens": ["4"],
+        "date_field": "dt_imagem",
+        "filtros_extra": {
+            "imagem": ["S"],
+            "assinado": ["N"],
+            "id_procedimento": ["96"],
+            "exame": {
+                "id_exame": [
+                   5742, 4887, 4889, 4891, 5302, 4890, 5501, 
+                   4858, 4859, 5461, 5304, 4903, 4904, 4902
+                ],
+                "excluindo": False
+            },
+            "tp_status": [
+                "NOVO", "PENDENTELAUDADO", "PENDENTEREVISADO", "PROVISORIO", 
+                "DITADO", "DIGITADO", "LAUDADO", "REVISADO", "ASSINADO", 
+                "TERCEIRAOPINIAO", "LIBERADO", "ENTREGUE"
+            ]
+        }
+    },
 
-    return {
+    # 3. SEMANAL ELETIVO (5 dias)
+    "SEMANAL_E": {
+        "origens": ["1", "2"], # 1=Amb, 2=Ext
+        "date_field": "dt_pedido",
+        "filtros_extra": {}
+    },
+
+    # 4. URGENTE (3 horas)
+    "DIA_U": {
+         "origens": ["3"],
+         "date_field": "dt_pedido",
+         "filtros_extra": {}
+    },
+
+    # 5. INTERNADO (36 horas)
+    "DIAS_I": {
+        "origens": ["4"],
+        "date_field": "dt_pedido",
+        "filtros_extra": {}
+    },
+    
+    # 6. MENSAL / SEMANAL (Geral)
+    "MENSAL": { "origens": [], "date_field": "dt_pedido", "filtros_extra": {} },
+    "SEMANAL": { "origens": [], "date_field": "dt_pedido", "filtros_extra": {} },
+}
+
+
+def gerar_payload(dt_inicio: str, dt_fim: str, rule: dict = None):
+    """
+    Gera payload dinamicamente com base nas datas e regras fornecidas.
+    """
+    if len(dt_inicio) == 10: dt_inicio += "T00:00:00-03:00"
+    if len(dt_fim) == 10:   dt_fim += "T23:59:59-03:00"
+
+    # Base "limpa"
+    payload = {
         "cd_id": "",
         "shortName": "dt_pedido",
         "shortOrder": "-1",
@@ -85,9 +150,9 @@ def gerar_payload(dt_inicio: str, dt_fim: str, origens: list = None):
         "tp_sexo": "",
         "cd_unidade": [],
         "nm_periodo_pedido": {"value": "outro", "label": "Outro"},
-        "dt_pedido": {"dt_inicio": dt_inicio, "dt_fim": dt_fim},
+        "dt_pedido": {"dt_inicio": "", "dt_fim": ""}, # Zerado por padrão
         "nm_periodo_estudo": {"value": "", "label": ""},
-        "dt_imagem": {"dt_inicio": "", "dt_fim": ""},
+        "dt_imagem": {"dt_inicio": "", "dt_fim": ""}, # Zerado por padrão
         "nm_periodo_imagem": {"value": "", "label": ""},
         "dt_cadastro": {"dt_inicio": "", "dt_fim": ""},
         "cd_modalidade": [],
@@ -104,7 +169,7 @@ def gerar_payload(dt_inicio: str, dt_fim: str, origens: list = None):
         "assinado": [],
         "liberado": [],
         "entregue": [],
-        "id_origem_atendimento": origens or [],
+        "id_origem_atendimento": [],
         "id_medico_executante": "",
         "id_medico_revisor": "",
         "nm_medico_executante": "",
@@ -125,6 +190,42 @@ def gerar_payload(dt_inicio: str, dt_fim: str, origens: list = None):
         "tp_anexo": "",
         "tp_certificado": ""
     }
+    
+    # Define Datas: Usa campo definido na regra (dt_imagem por padrão para Monitor)
+    # Regra antiga do fetcher era dt_pedido, mas Monitor usava arquivo com dt_imagem.
+    
+    target_date_field = "dt_imagem" # Default seguro
+    if rule and rule.get("date_field"):
+        target_date_field = rule["date_field"]
+    
+    # Preenche o campo alvo
+    payload[target_date_field]["dt_inicio"] = dt_inicio
+    payload[target_date_field]["dt_fim"]    = dt_fim
+
+    # Ajuste cosmético de label (opcional, mas bom pra manter igual)
+    if target_date_field == "dt_imagem":
+        payload["nm_periodo_imagem"] = {"value": "outro", "label": "Outro"}
+    elif target_date_field == "dt_pedido":
+         payload["nm_periodo_pedido"] = {"value": "outro", "label": "Outro"}
+    
+    # Aplica Regras
+
+    if rule:
+        # Modalidades
+        if rule.get("modalidades"):
+            payload["cd_modalidade"] = rule["modalidades"]
+            
+        # Origens (converte para lista de strings se não for)
+        if rule.get("origens"):
+            payload["id_origem_atendimento"] = [str(x) for x in rule["origens"]]
+            
+        # Filtros Extras (Atribuição Direta)
+        extras = rule.get("filtros_extra", {})
+        for k, v in extras.items():
+            if k in payload:
+                payload[k] = v
+                
+    return payload
 
 # ============================================================
 # Helpers
@@ -135,15 +236,15 @@ def gerar_payload_an(an: str):
     Gera um payload focado na busca por um Accession Number específico.
     Zera as datas para evitar filtragem temporal indesejada.
     """
-    # Parte de um payload "vazio" (datas vazias)
+    # Usa regra vazia
     payload = gerar_payload("", "")
     
     # Define o AN no campo correto
     payload["cd_item_pedido_his"] = an
     
-    # Algumas APIs exigem que se limpe explicitamente outros filtros ou
-    # que se defina um range de data longo se o backend for mal feito.
-    # Por enquanto, tentamos sem data. Se falhar, o usuário testará.
+    # Limpa filtros de data explicitamente
+    payload["nm_periodo_imagem"] = {"value": "", "label": ""}
+    
     return payload
 
 def carregar_session():
@@ -153,53 +254,8 @@ def carregar_session():
     except Exception as e:
         raise RuntimeError(f"Falha ao carregar sessão ({SESSION_FILE}): {e}")
 
-def carregar_payload(nome_cenario):
-    """Carrega payload correspondente ao cenário."""
-    path = DATA_DIR / f"payload_{nome_cenario}.json"
-    if not path.exists():
-        # Retorna None para permitir fallback de datas no modo raw, 
-        # mas gera erro no modo Nox se for crucial.
-        return None
-        
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        
-        # Lógica de atualização dinâmica de datas (Nox legacy)
-        try:
-            val = payload.get("nm_periodo_imagem", {}).get("value")
-            if val == "ontemhoje":
-                agora = datetime.now()
-                ontem = agora - timedelta(days=1)
-                
-                dt_ini = ontem.strftime("%Y-%m-%dT00:00:00.000Z")
-                dt_fim = agora.strftime("%Y-%m-%dT23:59:59.000Z")
-                
-                payload["dt_imagem"]["dt_inicio"] = dt_ini
-                payload["dt_imagem"]["dt_fim"]    = dt_fim
-                
-                msg_dt_ini = ontem.strftime("%d/%m")
-                msg_dt_fim = agora.strftime("%d/%m")
-                # log_info(f"Payload {nome_cenario}: datas ajustadas ({msg_dt_ini} a {msg_dt_fim})")
-                
-            elif val == "mes":
-                agora = datetime.now()
-                inicio = agora - timedelta(days=30)
-                
-                dt_ini = inicio.strftime("%Y-%m-%dT00:00:00.000Z")
-                dt_fim = agora.strftime("%Y-%m-%dT23:59:59.000Z")
-                
-                payload["dt_imagem"]["dt_inicio"] = dt_ini
-                payload["dt_imagem"]["dt_fim"]    = dt_fim
-                
-                # log_info(f"Payload {nome_cenario}: datas ajustadas (últimos 30 dias)")
+# carregar_payload REMOVIDO EM FAVOR DA GERAÇÃO DINÂMICA
 
-        except Exception:
-            pass
-
-        return payload
-
-    except Exception as e:
-        raise RuntimeError(f"Erro lendo payload {path}: {e}")
 
 # ============================================================
 # Paginador
@@ -240,21 +296,32 @@ def fetch_pagina(pagina, tamanho, cookies, headers, payload):
 def fetch_raw_mode(nome_cenario, dt_inicio=None, dt_fim=None, no_tqdm=False, origens=None):
     """
     Comportamento original do Munin: baixa tudo e salva JSON.
+    Gera payload dinamicamente com base em SCENARIO_RULES.
     """
-    # Banner removed to reduce verbosity
-    # log_info(f"=== FETCH RAW: {nome_cenario} ===")
     
-    # 1. Resolver Payload
-    if dt_inicio and dt_fim:
-        # log_info(f"Modo Data Range: {dt_inicio} até {dt_fim}")
-        if origens:
-            pass # log_info(f"Filtro de Origens ID: {origens}")
-        payload = gerar_payload(dt_inicio, dt_fim, origens)
-    else:
-        payload = carregar_payload(nome_cenario)
-        if not payload:
-            log_erro(f"[{nome_cenario}][FETCH] ERRO: Payload não encontrado e datas não informadas.")
-            return
+    # Busca regra
+    rule = SCENARIO_RULES.get(nome_cenario)
+    
+    if not rule and not (dt_inicio and dt_fim):
+        log_erro(f"[{nome_cenario}] ERRO: Regra desconhecida e datas não informadas.")
+        return
+
+    # Se origens foi passado via CLI, sobrescreve regra (ou cria regra on-the-fly)
+    if origens:
+        # Se não tiver regra, cria uma básica
+        if not rule:
+            rule = {"origens": origens, "filtros_extra": {}}
+        else:
+            # Sobrescreve origens, mantém filtros extra
+            rule = rule.copy()
+            rule["origens"] = origens
+
+    # Gera Payload
+    if not dt_inicio or not dt_fim:
+         log_erro(f"[{nome_cenario}] ERRO: É obrigatório informar datas para geração dinâmica.")
+         return
+
+    payload = gerar_payload(dt_inicio, dt_fim, rule)
 
     # 2. Sessão
     try:
@@ -366,10 +433,20 @@ def fetch_cenario(nome_cenario: str) -> dict:
         "Content-Type": "application/json",
     }
 
-    # No modo Nox, payload é obrigatório do arquivo
-    payload = carregar_payload(nome_cenario)
-    if not payload:
-        raise RuntimeError(f"Payload {nome_cenario} inexistente.")
+    # No modo Nox, payload é obrigatório via regra
+    rule = SCENARIO_RULES.get(nome_cenario)
+    if not rule:
+        # Se for um cenário desconhecido rodando em modo Nox, falhamos
+        raise RuntimeError(f"Regra de payload {nome_cenario} inexistente (SCENARIO_RULES).")
+        
+    # Nox geralmente opera D-1 e D0
+    agora = datetime.now()
+    ontem = agora - timedelta(days=1)
+    
+    dt_ini = ontem.strftime("%Y-%m-%d")
+    dt_fim = agora.strftime("%Y-%m-%d")
+    
+    payload = gerar_payload(dt_ini, dt_fim, rule)
 
     tamanho = 25
     pagina = 1
@@ -411,6 +488,153 @@ def fetch_varios(cenarios: list[str]) -> dict:
     final = {"HBR": [], "HAC": []}
     for c in cenarios:
         parcial = fetch_cenario(c)
+        final["HBR"].extend(parcial["HBR"])
+        final["HAC"].extend(parcial["HAC"])
+    
+    final["HBR"] = list(dict.fromkeys(final["HBR"]))
+    final["HAC"] = list(dict.fromkeys(final["HAC"]))
+    return final
+
+def parse_br_time(s):
+    """
+    Tenta parsear string de data com ou sem sufixo de timezone -03:00.
+    """
+    s = s.strip()
+    if not s: return None
+    
+    # Remove timezone suffix comum
+    if s.endswith("-03:00"):
+        s = s[:-6]
+    elif s.endswith("Z"):
+        s = s[:-1]
+        
+    if "T" in s:
+        return datetime.strptime(s, "%Y-%m-%dT%H:%M:%S")
+    else:
+        # Se for só data, assume 00:00:00
+        return datetime.strptime(s, "%Y-%m-%d")
+
+def ajustar_intervalo_datas(payload: dict):
+    """
+    Atualiza datas do payload:
+    Fim = Agora
+    Inicio = Agora - (FimOriginal - InicioOriginal)
+    """
+    campos = ["dt_imagem", "dt_pedido", "dt_cadastro", "dt_entrega"]
+    agora = datetime.now()
+    
+    for campo in campos:
+        if campo not in payload: continue
+        
+        d = payload[campo]
+        if not isinstance(d, dict): continue
+        
+        ini_str = d.get("dt_inicio", "")
+        fim_str = d.get("dt_fim", "")
+        
+        if not ini_str or not fim_str: continue
+        
+        try:
+            dt_ini = parse_br_time(ini_str)
+            dt_fim = parse_br_time(fim_str)
+            
+            if not dt_ini or not dt_fim: continue
+            
+            delta = dt_fim - dt_ini
+            
+            # Novo intervalo
+            # Fim = Agora completo (data e hora)
+            # Inicio = Fim - Delta
+            
+            novo_fim = agora
+            novo_ini = agora - delta
+            
+            # Formata para string ISO com sufixo -03:00 (padrão do sistema)
+            str_fim = novo_fim.strftime("%Y-%m-%dT%H:%M:%S-03:00")
+            str_ini = novo_ini.strftime("%Y-%m-%dT%H:%M:%S-03:00")
+            
+            d["dt_fim"] = str_fim
+            d["dt_inicio"] = str_ini
+            
+            # Ajusta label para "Outro" para evitar confusão na UI/Backend se houver validação
+            label_key = f"nm_periodo_{campo.split('_')[1]}"
+            if label_key in payload:
+                 payload[label_key] = {"value": "outro", "label": "Outro"}
+                 
+            # log_info(f"Datas ajustadas ({campo}): {str_ini} até {str_fim} (Delta: {delta})")
+            
+        except Exception as e:
+            log_erro(f"Falha ao ajustar datas dinâmicas para {campo}: {e}")
+
+
+def fetch_from_file(file_path: str) -> dict:
+    """
+    Lê um arquivo JSON de payload, ajusta as datas para o momento atual (mantendo intervalo)
+    e executa o fetch.
+    """
+    resultado = {"HBR": [], "HAC": []}
+    p = Path(file_path)
+    if not p.exists():
+        log_erro(f"Arquivo de payload não encontrado: {file_path}")
+        return resultado
+
+    try:
+        payload = json.loads(p.read_text(encoding="utf-8"))
+        # Ajuste dinâmico de datas (Fim=Agora, Inicio=Agora-Delta)
+        ajustar_intervalo_datas(payload)
+    except Exception as e:
+        log_erro(f"Erro ao ler/processar JSON {file_path}: {e}")
+        return resultado
+
+    try:
+        s = carregar_session()
+    except:
+        return resultado
+
+    cookies = {c["name"]: c["value"] for c in s.get("cookies", [])}
+    headers = {
+        "User-Agent": s["headers"]["User-Agent"],
+        "Authorization": s["headers"]["Authorization"],
+        "Content-Type": "application/json",
+    }
+
+    tamanho = 25
+    pagina = 1
+
+    dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
+    if not dados:
+        return resultado
+
+    total_registros = dados[0].get("quantidadePaginacao", len(dados))
+    total_paginas = max(1, ceil(total_registros / tamanho))
+
+    for r in dados:
+        an, srv = extrair_an_servidor(r)
+        if an and srv:
+            resultado[srv].append(an)
+
+    pagina += 1
+    while pagina <= total_paginas:
+        dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
+        if not dados:
+            break
+        for r in dados:
+            an, srv = extrair_an_servidor(r)
+            if an and srv:
+                resultado[srv].append(an)
+        
+        if pagina % 2 == 0 or pagina == total_paginas:
+             total_atual = len(resultado['HBR']) + len(resultado['HAC'])
+             log_info(f"[{p.name}] Baixando página {pagina}/{total_paginas} (Total parcial: {total_atual})")
+             
+        pagina += 1
+
+    return resultado
+
+def fetch_varios_arquivos(files: list[str]) -> dict:
+    final = {"HBR": [], "HAC": []}
+    for f in files:
+        parcial = fetch_from_file(f)
         final["HBR"].extend(parcial["HBR"])
         final["HAC"].extend(parcial["HAC"])
     

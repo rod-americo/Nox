@@ -45,7 +45,8 @@ class AppState:
         # Inicializa sem thread rodando, para usuário dar Start
         self.loop_thread = None
         self.loop_running = False
-        self.scenarios = scenarios or config.SCENARIOS
+        self.loop_running = False
+        self.scenarios = scenarios or [] # Lista de nomes de arquivo
         self.no_prepare = no_prepare
 
     def start_loop(self, on_exit_callback=None):
@@ -55,8 +56,24 @@ class AppState:
 
             def runner():
                 try:
-                    # Passa os cenários definidos na instância e flag --no-prepare se houver
-                    args_to_pass = list(self.scenarios)
+                    # Coletar caminhos completos dos cenários selecionados (arquivos em queries/)
+                    # self.scenarios contém apenas os NOMES dos arquivos (ex: plantao-rx.json)
+                    # Precisamos conveter para Full Path
+                    selected_paths = []
+                    queries_dir = Path("queries").resolve()
+                    
+                    for s_name in self.scenarios:
+                        # Se não tiver extensão .json, adiciona
+                        filename = s_name if s_name.lower().endswith(".json") else f"{s_name}.json"
+                        p = queries_dir / filename
+                        
+                        if p.exists():
+                            selected_paths.append(str(p))
+                        else:
+                             # Fallback: tenta o nome original
+                            selected_paths.append(s_name)
+
+                    args_to_pass = list(selected_paths)
                     if self.no_prepare:
                         args_to_pass.append("--no-prepare")
 
@@ -581,102 +598,56 @@ def main(page: ft.Page, scenarios=None, no_prepare=False):
             if val in selected_scenarios:
                 selected_scenarios.remove(val)
         
-        # Atualiza state e config runtime
+        # Atualiza state
         state.scenarios = selected_scenarios
-        config.SCENARIOS = selected_scenarios
-        
-        # Persistir no INI
+        # Persistir no INI (nomes sem extensão, conforme exibido)
         save_config_value("SETTINGS", "scenarios", json.dumps(selected_scenarios))
         
-        gui_log(time.strftime("%H:%M:%S"), "INFO", f"Cenários ativos: {', '.join(selected_scenarios)}")
+        gui_log(time.strftime("%H:%M:%S"), "INFO", f"Ativos: {', '.join(selected_scenarios)}")
         gui_log(time.strftime("%H:%M:%S"), "INFO", "Reinicie o monitor para aplicar.")
 
     scenario_column = ft.Column(scroll=ft.ScrollMode.AUTO)
 
-    def load_all_scenarios(e):
-        btn_load_scenarios.disabled = True
-        btn_load_scenarios.text = "Carregando..."
-        page.update()
+    def load_queries_files():
+        """Lê arquivos .json da pasta queries/ e popula checkboxes."""
+        q_dir = Path("queries")
+        if not q_dir.exists():
+             q_dir.mkdir(parents=True, exist_ok=True)
+             
+        # Lista arquivos mas exibe sem extensão .json
+        files = sorted([f.stem for f in q_dir.glob("*.json")])
         
-        def _fetch():
-            try:
-                cmd = [sys.executable, "prepare.py", "--mapear-cenarios"]
-                # errors='replace' evita crash se o windows cuspir cp1252 (á, é, etc) no buffer
-                result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
-                
-                found_list = []
-                                
-                if result.returncode == 0:
-                    output = result.stdout
-                    capturing = False
-                    ignorar = ["Destaques", "Editar Destaques", "Fav", "Cenários", "Ações", "Origem", "Nativos", "--- CENÁRIOS DISPONÍVEIS ---", "----------------------------"]
-                    
-                    for line in output.splitlines():
-                        line = line.strip()
-                        if "--- CENÁRIOS DISPONÍVEIS ---" in line:
-                            capturing = True
-                            continue
-                        if capturing and line.startswith("---"):
-                            break
-                        
-                        if capturing and line:
-                            clean_line = line.replace("- ", "").strip()
-                            if clean_line and clean_line not in ignorar:
-                                found_list.append(clean_line)
-                    
-                    found_list = sorted(list(set(found_list)))
-                else:
-                    gui_log(time.strftime("%H:%M:%S"), "ERRO", "Falha ao rodar prepare.py")
-                    print(result.stderr)
+        scenario_column.controls.clear()
+        
+        if not files:
+            scenario_column.controls.append(ft.Text("Nenhum arquivo em queries/", size=12, italic=True))
+        
+        for f in files:
+            # Se foi passado via CLI ou salvo no config, já vem checked
+            is_checked = f in selected_scenarios
+            scenario_column.controls.append(
+                ft.Checkbox(label=f, value=is_checked, on_change=on_scenario_check)
+            )
+        page.update()
 
-                if not found_list:
-                    gui_log(time.strftime("%H:%M:%S"), "AVISO", "Nenhum cenário extraído.")
-                
-                current_ui_set = {c.label for c in scenario_column.controls if isinstance(c, ft.Checkbox)}
-                
-                added_count = 0
-                for f in found_list:
-                    if f not in current_ui_set:
-                        ck = ft.Checkbox(label=f, value=(f in selected_scenarios), on_change=on_scenario_check)
-                        scenario_column.controls.append(ck)
-                        added_count += 1
-                
-                if added_count > 0:
-                    gui_log(time.strftime("%H:%M:%S"), "INFO", f"{added_count} novos cenários carregados.")
-                
-                btn_load_scenarios.text = "Atualizar Lista"
-            except Exception as ex:
-                gui_log(time.strftime("%H:%M:%S"), "ERRO", f"Erro listar: {ex}")
-                btn_load_scenarios.text = "Erro (Tentar novamente)"
-            finally:
-                btn_load_scenarios.disabled = False
-                page.update()
-
-        threading.Thread(target=_fetch, daemon=True).start()
-
-    # Popular inicialmente
-    for s in selected_scenarios:
-        scenario_column.controls.append(
-            ft.Checkbox(label=s, value=True, on_change=on_scenario_check)
-        )
-
-    btn_load_scenarios = ft.ElevatedButton(
-        "Carregar Todos", 
-        icon=ft.Icons.CLOUD_DOWNLOAD, 
+    # Botão de Atualizar Lista (apenas recarrega pasta queries)
+    btn_refresh_scenarios = ft.ElevatedButton(
+        "Atualizar Lista", 
+        icon=ft.Icons.REFRESH, 
         height=30, 
         style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=5)),
-        on_click=load_all_scenarios
+        on_click=lambda e: load_queries_files()
     )
 
     scenario_expander = ft.ExpansionTile(
-        title=ft.Text("Cenários", size=13, weight="bold"),
-        subtitle=ft.Text("Selecione os cenários para monitorar", size=11, color=COLOR_SUBTEXT),
+        title=ft.Text("Consultas", size=13, weight="bold"),
+        subtitle=ft.Text("Selecione as consultas", size=11, color=COLOR_SUBTEXT),
         controls=[
             ft.Container(
                 content=ft.Column([
-                    ft.Container(content=scenario_column, height=200), # Altura fixa para scroll
+                    ft.Container(content=scenario_column, height=150),
                     ft.Divider(height=1),
-                    btn_load_scenarios
+                    btn_refresh_scenarios
                 ], spacing=5),
                 padding=10
             )
@@ -685,6 +656,9 @@ def main(page: ft.Page, scenarios=None, no_prepare=False):
         collapsed_text_color=COLOR_TEXT,
         text_color=COLOR_PRIMARY
     )
+    
+    # Carga inicial
+    load_queries_files()
 
     # Layout Montagem
     page.add(

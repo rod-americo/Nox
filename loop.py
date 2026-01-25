@@ -221,21 +221,20 @@ def verificar_retencao_exames():
 
 def main(**kwargs):
     parser = argparse.ArgumentParser()
-    parser.add_argument("cenarios", nargs="*", help="Cenários Cockpit (ex.: MONITOR MONITOR_RX)")
+    parser.add_argument("cenarios", nargs="*", help="Caminhos para arquivos JSON de Payload")
     parser.add_argument("--no-prepare", action="store_true", help="Pular etapa de preparação")
     
     # Se chamado via GUI, args podem vir vazios ou customizados
     if "args" in kwargs:
         args = parser.parse_args(kwargs["args"])
     else:
-        # Se sys.argv estiver vazio de argumentos úteis (ex: rodando via import), default para MONITOR
         # Se sys.argv estiver vazio de argumentos úteis (ex: rodando via import), não força MONITOR aqui
         # Deixa o parser rodar vazio e pegamos do config abaixo
         pass
         args = parser.parse_args()
     
-    # Prioridade: 1. Argumentos CLI | 2. Config.ini | 3. Hardcoded MONITOR
-    cenarios = args.cenarios or config.SCENARIOS or ["MONITOR"]
+    # Prioridade: 1. Argumentos CLI (Arquivos)
+    cenarios = args.cenarios or []
 
     log_info("=== ORQUESTRADOR NOX ===")
     log_info(f"Cenários: {', '.join(cenarios)}")
@@ -249,9 +248,10 @@ def main(**kwargs):
     if not args.no_prepare:
         try:
             # Invoca prepare.py como subprocesso para isolar contexto (Playwright/Async)
-            # Passa cenários como argumentos flat (separados por espaço)
-            cmd = [sys.executable, "prepare.py", *cenarios]
-            log_info(f"Executando processo de preparação...")
+            # NÃO passa argumentos para prepare.py (apenas login/sessão), 
+            # pois loop agora trabalha com Arquivos JSON já prontos.
+            cmd = [sys.executable, "prepare.py"]
+            log_info(f"Executando processo de preparação (Login)...")
             
             subprocess.run(cmd, check=True)
             
@@ -334,7 +334,8 @@ def main(**kwargs):
             
             # 1. Fetch
             try:
-                dados = fetcher.fetch_varios(cenarios)
+                # Agora usa fetch por ARQUIVOS, não mais por nomes de cenários
+                dados = fetcher.fetch_varios_arquivos(cenarios)
             except Exception as e:
                 log_erro(f"Erro no fetcher: {e}")
                 log_info(f"Aguardando {config.LOOP_INTERVAL}s antes de tentar novamente...")

@@ -1,0 +1,117 @@
+{
+  "cd_id": "2ea26783-f39a-4f48-a8fd-d6192236d1b0",
+  "shortName": "dt_pedido",
+  "shortOrder": "-1",
+  "nm_notificacao": "",
+  "nm_paciente": "",
+  "nm_social_paciente": "",
+  "nm_unidade": "",
+  "cd_prontuario": "",
+  "id_exame_pedido": "",
+  "cd_atendimento_his": "",
+  "cd_acnumber": "",
+  "cd_pedido_his": "",
+  "tp_status": [],
+  "cd_item_pedido_his": "",
+  "nm_exame": "",
+  "nm_exame_Unidade": "",
+  "nm_setor_executante": [],
+  "tp_sexo": "",
+  "cd_unidade": [],
+  "nm_periodo_pedido": {
+    "value": "",
+    "label": ""
+  },
+  "dt_pedido": {
+    "dt_inicio": "",
+    "dt_fim": ""
+  },
+  "nm_periodo_estudo": {
+    "value": "",
+    "label": ""
+  },
+  "dt_imagem": {
+    "dt_inicio": "2026-01-20T00:00:00.000Z",
+    "dt_fim": "2026-01-21T23:59:59.000Z"
+  },
+  "nm_periodo_imagem": {
+    "value": "ontemhoje",
+    "label": "Ontem e hoje"
+  },
+  "dt_cadastro": {
+    "dt_inicio": "",
+    "dt_fim": ""
+  },
+  "cd_modalidade": [],
+  "nm_origem_atendimento": "",
+  "nm_classificacao_risco": "",
+  "sla": [],
+  "tp_criticidade": [],
+  "imagem": [
+    "S"
+  ],
+  "inconformidade": [],
+  "ditado": [],
+  "digitado": [],
+  "revisado": [],
+  "laudado": [],
+  "assinado": [
+    "N"
+  ],
+  "liberado": [],
+  "entregue": [],
+  "id_origem_atendimento": [
+    "4"
+  ],
+  "id_medico_executante": "",
+  "id_medico_revisor": "",
+  "nm_medico_executante": "",
+  "nm_medico_revisor": "",
+  "nm_medico_solicitante": "",
+  "id_procedimento": [
+    "96"
+  ],
+  "nr_prontuario_hospitalar": "",
+  "id_convenio": [],
+  "id_setor_solicitante": [],
+  "id_medico_solicitante": "",
+  "dt_entrega": {
+    "sn_datas_futuras": "",
+    "dt_inicio": "",
+    "dt_fim": ""
+  },
+  "nm_periodo_entrega": {
+    "value": "",
+    "label": ""
+  },
+  "exame": {
+    "id_exame": [
+      5742,
+      4887,
+      4889,
+      4891,
+      5302,
+      4890,
+      5461,
+      5304,
+      4903,
+      4904,
+      4902,
+      4862,
+      7364,
+      5501,
+      4858,
+      4859,
+      5501,
+      4858,
+      4859
+    ],
+    "excluindo": false
+  },
+  "cd_status_ia": [],
+  "id_risco": [],
+  "tp_impresso": "",
+  "tp_comentario": "",
+  "tp_anexo": "",
+  "tp_certificado": ""
+}
