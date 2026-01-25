@@ -255,13 +255,24 @@ def main(**kwargs):
     if "args" in kwargs:
         args = parser.parse_args(kwargs["args"])
     else:
-        # Se sys.argv estiver vazio de argumentos úteis (ex: rodando via import), não força MONITOR aqui
-        # Deixa o parser rodar vazio e pegamos do config abaixo
-        pass
         args = parser.parse_args()
     
-    # Prioridade: 1. Argumentos CLI (Arquivos)
-    cenarios = args.cenarios or []
+    # Prioridade: 1. Argumentos CLI (Arquivos), 2. config.SCENARIOS
+    if args.cenarios:
+        # Argumentos foram passados explicitamente
+        cenarios = args.cenarios
+    else:
+        # Sem argumentos: usa config.SCENARIOS e converte para queries/*.json
+        from pathlib import Path
+        queries_dir = Path("queries").resolve()
+        cenarios = []
+        
+        for scenario_name in config.SCENARIOS:
+            # Remove extensão .json se já tiver
+            clean_name = scenario_name.replace(".json", "")
+            # Constrói caminho completo
+            json_path = queries_dir / f"{clean_name}.json"
+            cenarios.append(str(json_path))
 
     log_info("=== ORQUESTRADOR NOX ===")
     log_info(f"Cenários: {', '.join(cenarios)}")

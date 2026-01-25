@@ -62,8 +62,8 @@ threads = 15
 theme = dark
 # Visualizador preferencial: radiant ou osirix
 viewer = osirix
-# Lista de Cenários (separados por vírgula ou JSON)
-scenarios = ["planto-rx", "plantao-tc= rm-us"]
+# Lista de Cenários (nomes dos arquivos em queries/ sem extensão .json)
+scenarios = ["plantao-rx", "plantao-tc-rm-us"]
 ```
 
 ---
@@ -147,14 +147,47 @@ python nox.py
 *   **Download Manual**: Interface intuitiva com botões de rádio para escolha do servidor.
 
 #### Modo CLI (Terminal)
-Ideal para debug ou execução leve. Use **aspas** para nomes compostos.
+Ideal para debug ou execução leve. Os cenários são lidos do `config.ini` por padrão.
 ```bash
 python nox.py --cli
 ```
 *Opções:*
-*   `python nox.py --cli MONITOR`: Roda CLI apenas para o cenário MONITOR.
-*   `python nox.py --cli "CENARIO COMPOSTO" MONITOR`: Exemplo com nomes contendo espaços.
-*   `python nox.py --cli --no-prepare`: Roda CLI pulando a preparação.
+*   `python nox.py --cli`: Usa cenários do config.ini
+*   `python nox.py --cli plantao-rx`: Roda CLI apenas com o cenário plantao-rx
+*   `python nox.py --cli --no-prepare`: Roda CLI pulando a preparação
+
+---
+
+---
+
+## 📋 Como Funcionam os Cenários
+
+O Nox usa **cenários** para definir quais exames devem ser monitorados e baixados. Existem duas formas de trabalhar com cenários:
+
+### 1. Cenários Pré-Definidos (Hardcoded)
+Regras fixas no código do `fetcher.py`:
+- `MONITOR`, `MONITOR_RX`, `DIA_E`, `DIA_U`, `DIAS_I`, etc.
+- Úteis para testes rápidos
+- Não requerem arquivos de configuração
+
+### 2. Cenários Personalizados (Arquivos JSON)
+Arquivos na pasta `queries/` com filtros customizados:
+- `plantao-rx.json`: Plantão de Radiologia
+- `plantao-tc-rm-us.json`: Plantão de TC/RM/US
+- Você pode criar seus próprios arquivos com filtros específicos
+
+### Configuração no `config.ini`
+```ini
+scenarios = ["plantao-rx", "plantao-tc-rm-us"]
+```
+- Liste os **nomes dos arquivos** (sem extensão `.json`)
+- O sistema converte automaticamente para `queries/plantao-rx.json`, etc.
+- Quando `nox.py` ou `loop.py` rodam sem argumentos, usam esta lista
+
+### Fluxo de Uso
+1. **GUI sem argumentos**: `python nox.py` → Usa cenários do `config.ini`
+2. **CLI sem argumentos**: `python loop.py` → Usa cenários do `config.ini`
+3. **Com argumentos**: `python nox.py plantao-rx` → Usa apenas o cenário especificado
 
 ---
 
@@ -201,17 +234,17 @@ O Nox é composto por vários scripts modulares que podem ser executados de form
 
 **Uso Básico**:
 ```bash
-# Modo GUI (padrão)
+# Modo GUI (padrão - usa cenários do config.ini)
 python nox.py
 
 # Modo GUI com cenários específicos
-python nox.py MONITOR MONITOR_RX
+python nox.py plantao-rx plantao-tc-rm-us
 
-# Modo CLI (sem interface gráfica)
+# Modo CLI (sem interface gráfica - usa cenários do config.ini)
 python nox.py --cli
 
 # Modo CLI com cenários específicos
-python nox.py --cli MONITOR
+python nox.py --cli plantao-rx
 
 # Pular etapa de preparação (login)
 python nox.py --no-prepare
@@ -221,7 +254,7 @@ python nox.py --no-prepare
 - `--gui`, `-g`: Executa com interface gráfica (padrão)
 - `--cli`, `-c`: Executa em modo linha de comando (sem GUI)
 - `--no-prepare`: Pula etapa de preparação (Playwright/Login)
-- `cenarios`: Lista de cenários para monitorar (ex: `MONITOR MONITOR_RX`)
+- `cenarios`: Lista de cenários para monitorar (ex: `plantao-rx plantao-tc-rm-us`). Se omitido, usa os cenários definidos em `config.ini`
 
 **Quando usar**:
 - ✅ Quando você quer interface visual e controle manual
@@ -236,19 +269,23 @@ python nox.py --no-prepare
 
 **Uso Básico**:
 ```bash
-# Usa cenários do config.ini
+# Usa cenários do config.ini (converte para queries/*.json automaticamente)
 python loop.py
 
-# Com arquivos de consulta específicos
-python loop.py queries/plantao-rx.json queries/monitor.json
+# Com arquivos de consulta específicos (caminhos completos)
+python loop.py queries/plantao-rx.json queries/plantao-tc-rm-us.json
 
 # Pular login (usar sessão existente)
 python loop.py --no-prepare
 ```
 
 **Argumentos**:
-- `cenarios`: Caminhos para arquivos JSON de payload (em `queries/`)
+- `cenarios`: Caminhos para arquivos JSON de payload (em `queries/`). Se omitido, usa `config.SCENARIOS` e converte para `queries/<nome>.json`
 - `--no-prepare`: Pula etapa de preparação (login)
+
+**Como funciona**:
+- Sem argumentos: Lê `scenarios` do `config.ini` e converte cada nome para `queries/<nome>.json`
+- Com argumentos: Usa os caminhos de arquivo fornecidos diretamente
 
 **Quando usar**:
 - ✅ Para execução em background/servidor
@@ -305,22 +342,22 @@ python downloader.py HAC 12345678 --no-progress
 
 **Uso Básico**:
 ```bash
-# Buscar por cenário pré-definido
+# Buscar por cenário pré-definido (regras hardcoded)
 python fetcher.py MONITOR
 
-# Buscar múltiplos cenários
+# Buscar múltiplos cenários pré-definidos
 python fetcher.py MONITOR MONITOR_RX DIA_U
 
-# Buscar usando arquivo de payload JSON
+# Buscar usando arquivo de payload JSON personalizado
 python fetcher.py --file queries/plantao-rx.json
 
-# Buscar múltiplos arquivos
-python fetcher.py --file queries/monitor.json queries/plantao-rx.json
+# Buscar múltiplos arquivos personalizados
+python fetcher.py --file queries/plantao-rx.json queries/plantao-tc-rm-us.json
 
-# Modo raw (salva JSON completo)
+# Modo raw (salva JSON completo em data/)
 python fetcher.py --raw MONITOR
 
-# Listar cenários disponíveis
+# Listar cenários disponíveis no servidor
 python fetcher.py --list
 ```
 
@@ -330,13 +367,18 @@ python fetcher.py --list
 - `--raw`: Modo raw/Munin (salva JSON completo em `data/`)
 - `--list`, `-l`: Lista cenários disponíveis no servidor
 
-**Cenários Pré-Definidos**:
+**Cenários Pré-Definidos** (hardcoded no fetcher.py):
 - `MONITOR`: CT/MR/US - Urgente/Internado - Não Assinado
 - `MONITOR_RX`: RX - Urgente/Internado - Não Assinado
 - `DIA_E`: Eletivo (24 horas)
 - `DIA_U`: Urgente (3 horas)
 - `DIAS_I`: Internado (36 horas)
 - `MENSAL`, `SEMANAL`: Períodos mais longos
+
+**Cenários Personalizados** (arquivos em queries/):
+- `plantao-rx`: Plantão de Radiologia (RX - Internado - Não Assinado)
+- `plantao-tc-rm-us`: Plantão de TC/RM/US (Internado - Não Assinado)
+- Você pode criar seus próprios arquivos JSON em `queries/` com filtros customizados
 
 **Quando usar**:
 - ✅ Para testar consultas à API
