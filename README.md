@@ -63,7 +63,7 @@ theme = dark
 # Visualizador preferencial: radiant ou osirix
 viewer = osirix
 # Lista de Cenários (separados por vírgula ou JSON)
-scenarios = ["MONITOR", "MONITOR_RX"]
+scenarios = ["planto-rx", "plantao-tc= rm-us"]
 ```
 
 ---
@@ -187,7 +187,259 @@ Baixa exames em massa usando uma lista de _Accession Numbers_ (ANs) copiados par
     python downloader.py HAC
     ```
 
+---
 
+## 📘 Scripts Standalone
+
+O Nox é composto por vários scripts modulares que podem ser executados de forma independente. Abaixo está a documentação completa de cada um.
+
+### 🎯 Pontos de Entrada Principais
+
+#### `nox.py` — Interface Gráfica (GUI)
+
+**Descrição**: Ponto de entrada principal com interface gráfica moderna (Flet). Ideal para uso interativo.
+
+**Uso Básico**:
+```bash
+# Modo GUI (padrão)
+python nox.py
+
+# Modo GUI com cenários específicos
+python nox.py MONITOR MONITOR_RX
+
+# Modo CLI (sem interface gráfica)
+python nox.py --cli
+
+# Modo CLI com cenários específicos
+python nox.py --cli MONITOR
+
+# Pular etapa de preparação (login)
+python nox.py --no-prepare
+```
+
+**Argumentos**:
+- `--gui`, `-g`: Executa com interface gráfica (padrão)
+- `--cli`, `-c`: Executa em modo linha de comando (sem GUI)
+- `--no-prepare`: Pula etapa de preparação (Playwright/Login)
+- `cenarios`: Lista de cenários para monitorar (ex: `MONITOR MONITOR_RX`)
+
+**Quando usar**:
+- ✅ Quando você quer interface visual e controle manual
+- ✅ Para monitorar downloads em tempo real
+- ✅ Para fazer downloads manuais pontuais
+
+---
+
+#### `loop.py` — Modo Headless/Automação
+
+**Descrição**: Orquestrador principal sem interface gráfica. Ideal para execução em background, servidores ou automação.
+
+**Uso Básico**:
+```bash
+# Usa cenários do config.ini
+python loop.py
+
+# Com arquivos de consulta específicos
+python loop.py queries/plantao-rx.json queries/monitor.json
+
+# Pular login (usar sessão existente)
+python loop.py --no-prepare
+```
+
+**Argumentos**:
+- `cenarios`: Caminhos para arquivos JSON de payload (em `queries/`)
+- `--no-prepare`: Pula etapa de preparação (login)
+
+**Quando usar**:
+- ✅ Para execução em background/servidor
+- ✅ Para automação via cron/systemd
+- ✅ Quando não precisa de interface gráfica
+
+**Diferença entre `nox.py --cli` e `loop.py`**:
+- `nox.py --cli`: Wrapper que chama `loop.py` internamente
+- `loop.py`: Execução direta do orquestrador
+
+---
+
+### 🔧 Utilitários
+
+#### `downloader.py` — Download Manual
+
+**Descrição**: Motor de download WADO/DICOM. Permite download manual de exames individuais ou em lote.
+
+**Uso Básico**:
+```bash
+# Download único
+python downloader.py HAC 12345678
+
+# Batch com servidor específico (lê ANs do clipboard)
+python downloader.py HAC
+
+# Batch com auto-detect (tenta HAC → HBR)
+python downloader.py
+
+# Desativar barra de progresso
+python downloader.py HAC 12345678 --no-progress
+```
+
+**Argumentos**:
+- `servidor`: Nome do servidor (`HBR` ou `HAC`) - opcional em modo batch
+- `an`: Accession Number - opcional, se omitido lê do clipboard
+- `--no-progress`, `-np`: Desativa barra de progresso
+
+**Modos de Operação**:
+1. **Download Único**: `python downloader.py SERVER AN`
+2. **Batch Servidor Específico**: `python downloader.py SERVER` (lê ANs do clipboard)
+3. **Batch Auto-Detect**: `python downloader.py` (tenta HAC, fallback para HBR)
+
+**Quando usar**:
+- ✅ Para baixar exames específicos manualmente
+- ✅ Para processar lista de ANs em lote
+- ✅ Para testar download de um exame específico
+
+---
+
+#### `fetcher.py` — Busca de Exames via API
+
+**Descrição**: Cliente da API Cockpit. Busca exames disponíveis baseado em cenários/filtros.
+
+**Uso Básico**:
+```bash
+# Buscar por cenário pré-definido
+python fetcher.py MONITOR
+
+# Buscar múltiplos cenários
+python fetcher.py MONITOR MONITOR_RX DIA_U
+
+# Buscar usando arquivo de payload JSON
+python fetcher.py --file queries/plantao-rx.json
+
+# Buscar múltiplos arquivos
+python fetcher.py --file queries/monitor.json queries/plantao-rx.json
+
+# Modo raw (salva JSON completo)
+python fetcher.py --raw MONITOR
+
+# Listar cenários disponíveis
+python fetcher.py --list
+```
+
+**Argumentos**:
+- `cenarios`: Nomes de cenários pré-definidos (ex: `MONITOR`, `DIA_U`)
+- `--file`, `-f`: Caminho para arquivo(s) JSON de payload
+- `--raw`: Modo raw/Munin (salva JSON completo em `data/`)
+- `--list`, `-l`: Lista cenários disponíveis no servidor
+
+**Cenários Pré-Definidos**:
+- `MONITOR`: CT/MR/US - Urgente/Internado - Não Assinado
+- `MONITOR_RX`: RX - Urgente/Internado - Não Assinado
+- `DIA_E`: Eletivo (24 horas)
+- `DIA_U`: Urgente (3 horas)
+- `DIAS_I`: Internado (36 horas)
+- `MENSAL`, `SEMANAL`: Períodos mais longos
+
+**Quando usar**:
+- ✅ Para testar consultas à API
+- ✅ Para criar novos arquivos de payload
+- ✅ Para debug de filtros e cenários
+
+---
+
+#### `query.py` — Consulta de Metadados WADO
+
+**Descrição**: Cliente WADO-Query. Obtém metadados de um exame (StudyUID, SeriesUIDs, SOPInstanceUIDs).
+
+**Uso Básico**:
+```bash
+# Consulta básica
+python query.py HAC 12345678
+
+# Saída JSON limpa (sem logs)
+python query.py HAC 12345678 --json
+
+# Consultar HBR
+python query.py HBR 12345678
+```
+
+**Argumentos**:
+- `servidor`: Nome do servidor (`HBR` ou `HAC`)
+- `an`: Accession Number
+- `--json`: Saída JSON limpa, sem logs (útil para scripts)
+
+**Saída**:
+```json
+{
+  "an": "12345678",
+  "study_uid": "1.2.840...",
+  "total_instances": 150,
+  "series": [
+    {
+      "series_uid": "1.2.840...",
+      "instances": ["1.2.840...", ...]
+    }
+  ]
+}
+```
+
+**Quando usar**:
+- ✅ Para verificar se um exame existe no servidor
+- ✅ Para obter metadados sem baixar as imagens
+- ✅ Para debug de problemas de download
+
+---
+
+#### `prepare.py` — Preparação e Login
+
+**Descrição**: Automação Playwright para login no Cockpit e captura de sessão/tokens.
+
+**Uso Básico**:
+```bash
+# Login e preparação padrão
+python prepare.py
+
+# Mapear todos os cenários disponíveis
+python prepare.py --mapear-cenarios
+
+# Listar cenários (alias)
+python prepare.py --list
+```
+
+**Argumentos**:
+- `--mapear-cenarios`: Lista todos os cenários disponíveis na conta
+- `--list`, `-l`: Alias para `--mapear-cenarios`
+
+**Quando usar**:
+- ✅ Para renovar sessão expirada
+- ✅ Para descobrir novos cenários disponíveis
+- ✅ Para debug de problemas de autenticação
+
+**Nota**: Este script é executado automaticamente pelo `loop.py` e `nox.py`, a menos que `--no-prepare` seja usado.
+
+---
+
+## 🔄 Fluxo de Uso Recomendado
+
+### Para quem quer GUI:
+```bash
+python nox.py
+```
+- Interface visual completa
+- Controle manual de downloads
+- Monitoramento em tempo real
+
+### Para quem não quer GUI (automação):
+```bash
+python loop.py
+```
+- Execução em background
+- Ideal para servidores
+- Sem dependência de interface gráfica
+
+### Para downloads manuais pontuais:
+```bash
+# Copie os ANs para o clipboard, depois:
+python downloader.py
+```
 
 ---
 

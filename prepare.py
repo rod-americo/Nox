@@ -337,15 +337,17 @@ def mapear_cenarios():
 # ============================================================
 
 def main():
+    set_logfile(config.LOG_DIR / "prepare.log")
+    
+    # Se não houver argumentos, executa apenas login/sessão
     if len(sys.argv) < 2:
-        print("uso: python prepare.py <CENÁRIO_1> ... OU --mapear-cenarios")
-        sys.exit(1)
+        log_info("Nenhum argumento fornecido. Executando apenas login e extração de sessão.")
+        preparar([])  # Lista vazia de cenários
+        return
 
     if "--mapear-cenarios" in sys.argv:
-        set_logfile(config.LOG_DIR / "prepare.log")
         mapear_cenarios()
     else:
-        set_logfile(config.LOG_DIR / "prepare.log")
         cenarios = [c.strip() for c in sys.argv[1:]]
         preparar(cenarios)
 

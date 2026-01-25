@@ -498,9 +498,15 @@ def fetch_varios(cenarios: list[str]) -> dict:
 def parse_br_time(s):
     """
     Tenta parsear string de data com ou sem sufixo de timezone -03:00.
+    Suporta timestamps com milliseconds (.000).
     """
     s = s.strip()
     if not s: return None
+    
+    # Remove milliseconds se presentes (ex: .000, .123, etc)
+    # Procura por ponto seguido de 1-6 dígitos antes do timezone ou fim da string
+    import re
+    s = re.sub(r'\.\d{1,6}(?=[Z\-+]|$)', '', s)
     
     # Remove timezone suffix comum
     if s.endswith("-03:00"):
@@ -603,6 +609,7 @@ def fetch_from_file(file_path: str) -> dict:
 
     dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
     if not dados:
+        log_info(f"[{p.name}] Nenhum exame encontrado para os critérios especificados.")
         return resultado
 
     total_registros = dados[0].get("quantidadePaginacao", len(dados))
@@ -633,10 +640,13 @@ def fetch_from_file(file_path: str) -> dict:
 
 def fetch_varios_arquivos(files: list[str]) -> dict:
     final = {"HBR": [], "HAC": []}
-    for f in files:
+    log_info(f"Processando {len(files)} arquivo(s) de payload...")
+    for i, f in enumerate(files, 1):
+        log_info(f"[{i}/{len(files)}] Processando arquivo: {Path(f).name}")
         parcial = fetch_from_file(f)
         final["HBR"].extend(parcial["HBR"])
         final["HAC"].extend(parcial["HAC"])
+        log_info(f"[{i}/{len(files)}] Resultado: HBR={len(parcial['HBR'])}, HAC={len(parcial['HAC'])}")
     
     final["HBR"] = list(dict.fromkeys(final["HBR"]))
     final["HAC"] = list(dict.fromkeys(final["HAC"]))

@@ -65,11 +65,31 @@ if not CONFIG_FILE.exists():
 parser.read(CONFIG_FILE, encoding="utf-8")
 
 def get(section: str, key: str, default=None):
-    """Leitura segura com fallback."""
+    """
+    Lê valor de configuração do arquivo INI com fallback seguro.
+    
+    Args:
+        section: Nome da seção no config.ini (ex: 'PATHS', 'SETTINGS')
+        key: Chave da configuração dentro da seção
+        default: Valor padrão caso a chave não exista
+    
+    Returns:
+        str: Valor da configuração ou default se não encontrado
+    """
     return parser.get(section, key, fallback=default)
 
 def getint(section: str, key: str, default=None):
-    """Leitura segura de inteiro com fallback."""
+    """
+    Lê valor inteiro de configuração do arquivo INI com fallback seguro.
+    
+    Args:
+        section: Nome da seção no config.ini (ex: 'SETTINGS')
+        key: Chave da configuração dentro da seção
+        default: Valor padrão caso a chave não exista ou não seja inteiro válido
+    
+    Returns:
+        int: Valor da configuração convertido para inteiro ou default
+    """
     return parser.getint(section, key, fallback=default)
 
 # ============================================================
@@ -200,15 +220,23 @@ except:
     else:
         SCENARIOS = [s.strip().strip('"\'') for s in _raw_scenarios.split()]
 
+# Detecção de Storage Mode (Persistent vs Transient)
+# - Persistent: Mantém arquivos DICOM em disco (ideal para RadiAnt/Windows)
+# - Transient: Move arquivos para OsiriX Incoming e remove temporários (ideal para OsiriX/macOS)
 _storage_conf = get("SETTINGS", "storage_mode", "").lower()
 if _storage_conf in ["transient", "persistent"]:
+    # Usuário especificou explicitamente no config.ini
     STORAGE_MODE = _storage_conf
 else:
-    # Default Inteligente
+    # Detecção automática baseada no visualizador configurado
+    # OsiriX/Horos: Usa Transient (move para Incoming, não mantém cópia local)
+    # RadiAnt: Usa Persistent (mantém arquivos em RADIANT_DICOM_DIR)
     if VIEWER in ["osirix", "horos"]:
         STORAGE_MODE = "transient"
     else:
         STORAGE_MODE = "persistent"
+
+# Flag para screenshots de debug (Playwright)
 DEBUG_SCREENSHOTS = False  # Ative para salvar screenshots de debug em data/debug/
 
 # === Compatibilidade com scripts antigos que importam SERVER/WADO_PORT direto ===

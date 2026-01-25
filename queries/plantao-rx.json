@@ -1,5 +1,5 @@
 {
-  "cd_id": "2ea26783-f39a-4f48-a8fd-d6192236d1b0",
+  "cd_id": "",
   "shortName": "dt_pedido",
   "shortOrder": "-1",
   "nm_notificacao": "",
@@ -11,7 +11,20 @@
   "cd_atendimento_his": "",
   "cd_acnumber": "",
   "cd_pedido_his": "",
-  "tp_status": [],
+  "tp_status": [
+    "NOVO",
+    "PENDENTELAUDADO",
+    "PENDENTEREVISADO",
+    "PROVISORIO",
+    "DITADO",
+    "DIGITADO",
+    "LAUDADO",
+    "REVISADO",
+    "ASSINADO",
+    "TERCEIRAOPINIAO",
+    "LIBERADO",
+    "ENTREGUE"
+  ],
   "cd_item_pedido_his": "",
   "nm_exame": "",
   "nm_exame_Unidade": "",
@@ -19,8 +32,8 @@
   "tp_sexo": "",
   "cd_unidade": [],
   "nm_periodo_pedido": {
-    "value": "",
-    "label": ""
+    "value": "outro",
+    "label": "Outro"
   },
   "dt_pedido": {
     "dt_inicio": "",
@@ -31,12 +44,12 @@
     "label": ""
   },
   "dt_imagem": {
-    "dt_inicio": "2026-01-20T00:00:00.000Z",
-    "dt_fim": "2026-01-21T23:59:59.000Z"
+    "dt_inicio": "2026-01-24T00:00:00-03:00",
+    "dt_fim": "2026-01-25T23:59:59-03:00"
   },
   "nm_periodo_imagem": {
-    "value": "ontemhoje",
-    "label": "Ontem e hoje"
+    "value": "outro",
+    "label": "Outro"
   },
   "dt_cadastro": {
     "dt_inicio": "",
@@ -92,19 +105,14 @@
       4891,
       5302,
       4890,
+      5501,
+      4858,
+      4859,
       5461,
       5304,
       4903,
       4904,
-      4902,
-      4862,
-      7364,
-      5501,
-      4858,
-      4859,
-      5501,
-      4858,
-      4859
+      4902
     ],
     "excluindo": false
   },

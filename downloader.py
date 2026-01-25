@@ -1,5 +1,46 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+downloader.py — Motor de Download WADO/DICOM
+---------------------------------------------
+
+Este módulo gerencia o download de exames DICOM via protocolo WADO.
+
+FUNCIONALIDADES PRINCIPAIS:
+1. Download paralelo de imagens DICOM usando ThreadPoolExecutor
+2. Retry automático com fallback entre servidores (HAC → HBR)
+3. Rastreamento de progresso via arquivos JSON
+4. Suporte a dois modos de armazenamento:
+   - Persistent: Mantém arquivos em disco (RadiAnt/Windows)
+   - Transient: Move para OsiriX Incoming e remove temporários (OsiriX/macOS)
+
+MODOS DE USO:
+
+1. Download único:
+   python downloader.py HAC 12345678
+
+2. Batch com servidor específico (lê ANs do clipboard):
+   python downloader.py HAC
+
+3. Batch com auto-detect (tenta HAC → HBR):
+   python downloader.py
+
+FUNÇÕES PRINCIPAIS:
+- baixar_an(servidor, an, mostrar_progresso): Baixa um exame completo
+- _baixar_sop(url, destino, extract_metadata): Baixa uma única imagem DICOM
+- _ler_clipboard(): Lê lista de ANs da área de transferência
+
+ARQUIVOS JSON DE PROGRESSO:
+Cada exame gera um arquivo JSON em progresso/ com:
+- an: Accession Number
+- servidor: HBR ou HAC
+- status: ativo, baixando, completo
+- total: Número total de imagens
+- baixadas: Número de imagens já baixadas
+- velocidade: Taxa de download (img/s)
+- historico: Lista de SOPInstanceUIDs já baixados
+- patient_name, study_desc, modality: Metadados do paciente
+"""
 
 import os
 import sys

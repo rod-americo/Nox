@@ -5,14 +5,41 @@
 loop.py — Orquestrador Cockpit (Versão Nativa/Threaded)
 -------------------------------------------------------
 
-Fluxo:
-1. (Opcional) Executa prepare.py UMA VEZ.
+Este módulo implementa o loop principal de monitoramento e download automático.
+É o ponto de entrada para execução sem interface gráfica (CLI/headless).
+
+FLUXO DE EXECUÇÃO:
+1. (Opcional) Executa prepare.py UMA VEZ para login e captura de sessão
 2. Loop contínuo:
-   • Verifica se há threads de download ativas.
-     - Se sim: aguarda (blocking).
-     - Se não: executa fetcher.
-   • Com novos dados, dispara Threads separadas para HBR e HAC.
-   • Cada Thread chama downloader.baixar_an() sequencialmente para sua lista.
+   • Verifica se há threads de download ativas
+     - Se sim: aguarda (blocking)
+     - Se não: executa fetcher para buscar novos exames
+   • Com novos dados, dispara Threads separadas para HBR e HAC
+   • Cada Thread chama downloader.baixar_an() sequencialmente para sua lista
+   • Aguarda intervalo configurado (LOOP_INTERVAL) antes do próximo ciclo
+
+MODOS DE USO:
+
+1. Modo padrão (usa cenários do config.ini):
+   python loop.py
+
+2. Com cenários específicos (arquivos JSON em queries/):
+   python loop.py queries/plantao-rx.json queries/monitor.json
+
+3. Pular etapa de preparação (usar sessão existente):
+   python loop.py --no-prepare
+
+4. Via nox.py CLI:
+   python nox.py --cli
+
+CLASSES:
+- LoopController: Gerencia controle de fluxo (pause/resume/stop)
+
+FUNÇÕES PRINCIPAIS:
+- main(**kwargs): Ponto de entrada principal do loop
+- worker_download(servidor, lista_ans, controller): Worker thread para downloads
+- verificar_retencao_exames(): Mantém apenas N exames mais recentes
+- limpar_antigos(dias): Remove arquivos de progresso antigos
 """
 
 import sys

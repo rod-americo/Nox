@@ -12,7 +12,6 @@ import loop
 import logger
 import downloader
 import json
-import downloader
 import prepare # Importar prepare para listar cenários
 
 # ============================================================
@@ -259,7 +258,7 @@ def main(page: ft.Page, scenarios=None, no_prepare=False):
     # Permitir fechar naturalmente (trataremos cleanup no on_disconnect)
     set_window_prop(page, "prevent_close", False)
 
-    state = AppState(scenarios=scenarios, no_prepare=no_prepare)
+    state = AppState(scenarios=scenarios or config.SCENARIOS, no_prepare=no_prepare)
     
     load_window_state(page)
 
