@@ -276,7 +276,8 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
         destino_base = config.TMP_DIR / an
     else:
         # Diretório base será persistente
-        destino_base = config.RADIANT_DICOM_DIR / an
+        # OUTPUT_DICOM_DIR já vem configurado com detecção automática de SO
+        destino_base = config.OUTPUT_DICOM_DIR / an
     
     historico = set(js.get("historico", []))
     historico_validado = set()

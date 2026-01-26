@@ -40,15 +40,23 @@ Todas as preferências são gerenciadas no arquivo `config.ini`.
 user = SEU_USUARIO
 pass = SUA_SENHA
 
+[OPERATIONAL SYSTEM]
+# Sistema operacional: windows, linux ou macos
+system = linux
+
 [PATHS]
 # [MacOS/Linux] Caminho da pasta de entrada do OsiriX
 osirix_incoming = /Users/rodrigo/OsiriX Data.nosync/INCOMING.noindex
 # [Windows] Caminho da pasta de entrada mapeada (Network Drive) ou local
-osirix_incoming_mapped = W:\
+osirix_incoming_mapped = W:\\
 
 # Caminhos RadiAnt (Windows Only)
-radiant_exe = C:\Program Files\RadiAntViewer\RadiAntViewer.exe
-radiant_dicom = C:\DICOM
+radiant_exe = C:\\Program Files\\RadiAntViewer\\RadiAntViewer.exe
+radiant_dicom = C:\\DICOM
+
+# Linux/macOS (usado quando system = linux ou macos)
+# Caminho relativo ao script ou absoluto - Default: data/DICOM
+linux_dicom = data/DICOM
 
 [SETTINGS]
 # Intervalo de verificação (segundos)
@@ -65,6 +73,12 @@ viewer = osirix
 # Lista de Cenários (nomes dos arquivos em queries/ sem extensão .json)
 scenarios = ["plantao-rx", "plantao-tc-rm-us"]
 ```
+
+**💡 Configuração de Sistema Operacional:**
+Configure `[OPERATIONAL SYSTEM] system` no `config.ini`:
+- **`windows`**: Usa `radiant_dicom` (ex: `C:\DICOM`)
+- **`linux`**: Usa `linux_dicom` (ex: `data/DICOM` ou `/mnt/storage/DICOM`)
+- **`macos`**: Usa `linux_dicom` (ex: `data/DICOM`)
 
 ---
 
@@ -133,6 +147,32 @@ Você precisará do **Git** para baixar o projeto.
     playwright install chromium
     ```
 
+#### Linux 🐧 (Headless)
+
+1.  **Clone o repositório:**
+    ```bash
+    git clone https://github.com/rod-americo/Nox.git
+    cd Nox
+    ```
+
+2.  **Crie e ative o ambiente virtual:**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+
+3.  **Instale as dependências:**
+    ```bash
+    pip install -r requirements.txt
+    playwright install chromium
+    ```
+
+4.  **Configure o `config.ini`:**
+    - Defina `[OPERATIONAL SYSTEM] system = linux`
+    - Configure `linux_dicom` em `[PATHS]` (default: `data/DICOM`)
+    - Pode ser caminho absoluto: `/mnt/storage/DICOM`
+    - A estrutura de saída é: `linux_dicom/AN/*.dcm`
+
 ### Execução
 
 Sempre ative o ambiente virtual a partir do diretório do projeto antes de rodar (`.\venv\Scripts\Activate` ou `source venv/bin/activate`).
@@ -172,8 +212,8 @@ Regras fixas no código do `fetcher.py`:
 
 ### 2. Cenários Personalizados (Arquivos JSON)
 Arquivos na pasta `queries/` com filtros customizados:
-- `plantao-rx.json`: Plantão de Radiologia
-- `plantao-tc-rm-us.json`: Plantão de TC/RM/US
+- `plantao-rx.json`: Radiografias do escopo do Plantão
+- `plantao-tc-rm-us.json`: TC/RM/US do PS e de Internados
 - Você pode criar seus próprios arquivos com filtros específicos
 
 ### Configuração no `config.ini`

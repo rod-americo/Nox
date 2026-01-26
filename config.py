@@ -14,9 +14,16 @@ OPÇÕES DO ARQUIVO DE CONFIGURAÇÃO (config.ini):
   port      : Porta do serviço WADO (Default: 1000)
   path      : Caminho do serviço (Default: WADO/AETILE)
 
+[OPERATIONAL SYSTEM]
+  system    : Sistema operacional em uso. Opções: 'windows', 'linux', 'macos'.
+              Define qual diretório DICOM será usado (radiant_dicom ou linux_dicom).
+
 [PATHS]
   radiant_dicom   : Diretório onde os exames baixados serão salvos (Persistent) ou montados (Transient).
                     Ex: C:\\DICOM (Windows) ou /Users/user/DICOM (Mac)
+  linux_dicom     : Diretório de saída para ambientes Linux headless. Pode ser caminho absoluto ou
+                    relativo ao script. Default: data/DICOM. Usado como fallback quando radiant_dicom
+                    não for acessível (ex: path Windows em servidor Linux).
   osirix_incoming : (Opcional) Diretório de entrada ("Incoming") do OsiriX/Horos.
                     Se definido e STORAGE_MODE=transient, os arquivos são movidos para cá.
   radiant_exe     : Caminho do executável do RadiAnt (para abertura automática).
@@ -37,11 +44,13 @@ OPÇÕES DO ARQUIVO DE CONFIGURAÇÃO (config.ini):
   pass : Senha do Cockpit.
 
 CONSTANTES INTERNAS:
-  SERVERS          : Dicionário com configurações de HBR e HAC.
-  DOWNLOAD_WORKERS : Mapeia [SETTINGS] threads.
-  RADIANT_DICOM_DIR: Path object de [PATHS] radiant_dicom.
-  STORAGE_MODE     : Modo de armazenamento efetivo.
-  VERSION          : Versão atual do aplicativo.
+  SERVERS           : Dicionário com configurações de HBR e HAC.
+  DOWNLOAD_WORKERS  : Mapeia [SETTINGS] threads.
+  RADIANT_DICOM_DIR : Path object de [PATHS] radiant_dicom (Windows).
+  LINUX_DICOM_DIR   : Path object de [PATHS] linux_dicom (Linux/macOS).
+  OUTPUT_DICOM_DIR  : Diretório efetivo usado (auto-detectado por SO).
+  STORAGE_MODE      : Modo de armazenamento efetivo.
+  VERSION           : Versão atual do aplicativo.
 """
 
 import sys
@@ -139,12 +148,24 @@ RETRY_ESPERA = int(get("SETTINGS", "retry_wait", "30"))
 
 
 # ============================================================
-# Configurações Externas (Paths do INI)
+# Diretórios de Saída DICOM (Configurável por SO)
 # ============================================================
 
-# Onde salvar os DICOMs (C:\DICOM ou Network Share)
-RADIANT_DICOM_DIR = Path(get("PATHS", "radiant_dicom", r"C:\DICOM")) 
+# Windows: Usa RADIANT_DICOM_DIR (C:\DICOM ou Network Share)
+RADIANT_DICOM_DIR = Path(get("PATHS", "radiant_dicom", r"C:\\DICOM"))
 
+# Linux/macOS: Pasta alternativa (relativa ao script ou absoluta)
+_linux_dicom_raw = get("PATHS", "linux_dicom", "data/DICOM")
+LINUX_DICOM_DIR = Path(_linux_dicom_raw) if Path(_linux_dicom_raw).is_absolute() else BASE_DIR / _linux_dicom_raw
+
+# Lê configuração de SO do INI (linux, windows, macos)
+SYSTEM_CONFIG = get("OPERATIONAL SYSTEM", "system", "windows").lower()
+
+# Define diretório de saída baseado na configuração
+if SYSTEM_CONFIG == "windows":
+    OUTPUT_DICOM_DIR = RADIANT_DICOM_DIR
+else:  # linux ou macos
+    OUTPUT_DICOM_DIR = LINUX_DICOM_DIR
 
 # OS-dependent OsiriX Incoming
 if platform.system() == "Windows":
@@ -202,8 +223,9 @@ VIEWER        = get("SETTINGS", "viewer", "radiant").lower()
 _viewer_display = "OsiriX" if VIEWER == "osirix" else "RadiAnt"
 TITLE         = f"Assistente :: {_viewer_display} :: Mezo"
 
-if VIEWER == "radiant":
-    RADIANT_DICOM_DIR.mkdir(parents=True, exist_ok=True)
+# Criar diretório de saída DICOM (OUTPUT_DICOM_DIR já foi definido com detecção de SO)
+OUTPUT_DICOM_DIR.mkdir(parents=True, exist_ok=True)
+
 
 # Parse de cenários robusto (suporta JSON, vírgula ou espaço)
 _raw_scenarios = get("SETTINGS", "scenarios", "MONITOR")
@@ -247,10 +269,12 @@ WADO_PATH = SERVERS["HBR"]["wado_path"]
 # === Diagnóstico ===
 if __name__ == "__main__":
     print(f"--- Configuração Carregada ---")
-    print(f"INI File:      {CONFIG_FILE}")
-    print(f"HBR:           {SERVERS['HBR']['server']}")
-    print(f"HAC:           {SERVERS['HAC']['server']}")
-    print(f"Web Base URL:  {URL_BASE}")
-    print(f"DICOM Output:  {RADIANT_DICOM_DIR}")
-    print(f"Threads:       {DOWNLOAD_WORKERS}")
-    print(f"User:          {USUARIO}")
+    print(f"INI File:         {CONFIG_FILE}")
+    print(f"Sistema Config:   {SYSTEM_CONFIG}")
+    print(f"HBR:              {SERVERS['HBR']['server']}")
+    print(f"HAC:              {SERVERS['HAC']['server']}")
+    print(f"Web Base URL:     {URL_BASE}")
+    print(f"DICOM Output:     {OUTPUT_DICOM_DIR}")
+    print(f"Storage Mode:     {STORAGE_MODE}")
+    print(f"Threads:          {DOWNLOAD_WORKERS}")
+    print(f"User:             {USUARIO}")

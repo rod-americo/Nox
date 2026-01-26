@@ -8,6 +8,11 @@ server = 10.24.254.27
 port = 1000
 path = WADO/AETILE
 
+[OPERATIONAL SYSTEM]
+# Sistema operacional: windows, linux ou macos
+# Define qual diretório DICOM será usado
+system = windows
+
 [PATHS]
 # --- Configuração de Caminhos ---
 
@@ -24,6 +29,11 @@ radiant_exe = C:\Program Files\RadiAntViewer\RadiAntViewer.exe
 
 # [Windows] Diretório onde salvar arquivos DICOM para o RadiAnt ler
 radiant_dicom = C:\DICOM
+
+# [Linux Headless] Diretório de saída para ambientes sem interface gráfica
+# Pode ser caminho absoluto ou relativo ao script. Default: data/DICOM
+# Usado automaticamente quando radiant_dicom não for acessível (ex: path Windows em Linux)
+linux_dicom = data/DICOM
 
 [SETTINGS]
 # Número de threads simultâneas para download
