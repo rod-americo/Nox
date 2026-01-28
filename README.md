@@ -23,7 +23,7 @@
     *   **Auto-Move**: Move exames baixados para a pasta `Incoming` do OsiriX (modo Transient).
 
 ### Interface & Usabilidade
-*   **GUI Nativa (Tkinter)**: Interface leve e rápida, com suporte a temas (Dark/Light) e persistência de geometria.
+*   **GUI Moderna (CustomTkinter)**: Interface moderna com cantos arredondados, temas nativos e alta compatibilidade.
 *   **Lista Dinâmica**: Exibe exames ordenados alfabeticamente por Nome do Paciente.
 *   **Controle de Retenção Dinâmico**: Slider na interface para ajustar o limite de exames (`max_exames`) em tempo real.
 *   **Download Manual**: Selecione o servidor (HBR/HAC) e digite apenas o *Accession Number* para baixar.

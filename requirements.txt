@@ -2,3 +2,4 @@ playwright
 pydicom
 requests
 rich
+customtkinter

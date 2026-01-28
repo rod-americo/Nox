@@ -1,3 +1,4 @@
+import customtkinter as ctk
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sys
@@ -20,44 +21,25 @@ import downloader
 # ESTILOS / CONSTANTES
 # ============================================================
 FONT_MONO = ("Courier New", 12)
-FONT_NORMAL = ("Segoe UI", 10) if sys.platform == "win32" else ("Helvetica", 12)
-FONT_BOLD = ("Segoe UI", 10, "bold") if sys.platform == "win32" else ("Helvetica", 12, "bold")
+# CustomTkinter usa strings para fonts ou tuplas
+FONT_NORMAL = ("Roboto", 12)
+FONT_BOLD = ("Roboto", 12, "bold")
 
-# Cores Base (Defaults)
+# Cores Base (Adaptadas para o tema do CTk)
+# CTk gerencia cores automaticamente (Dark/Light), mas podemos forçar algumas
 COLOR_GREEN = "#00e676"
 COLOR_RED = "#ff5252"
 COLOR_GRAY = "#9e9e9e"
-COLOR_WHITE = "#ffffff"
-COLOR_DARK = "#2d2d2d"
 
-# Paletas
-THEME_DARK = {
-    "bg": "#2d2d2d",
-    "fg": "#ffffff",
-    "card": "#424242",
-    "input_bg": "#505050",
-    "input_fg": "#ffffff",
-    "select_bg": "#00e676",
-    "select_fg": "#000000"
-}
-
-THEME_LIGHT = {
-    "bg": "#f0f0f0",
-    "fg": "#000000",
-    "card": "#ffffff",
-    "input_bg": "#ffffff",
-    "input_fg": "#000000",
-    "select_bg": "#00e676",
-    "select_fg": "#ffffff"
-}
+# Arquivo de estado da GUI
+GUI_STATE_FILE = config.DATA_DIR / "gui_config.json"
 
 class AppState:
     def __init__(self, scenarios=None, no_prepare=False):
         self.loop_controller = loop.LoopController()
-        # Inicializa sem thread rodando, para usuário dar Start
         self.loop_thread = None
         self.loop_running = False
-        self.scenarios = scenarios or [] # Lista de nomes de arquivo
+        self.scenarios = scenarios or []
         self.no_prepare = no_prepare
 
     def start_loop(self, on_exit_callback=None):
@@ -67,19 +49,16 @@ class AppState:
 
             def runner():
                 try:
-                    # Coletar caminhos completos dos cenários selecionados (arquivos em queries/)
                     selected_paths = []
                     queries_dir = Path("queries").resolve()
                     
                     for s_name in self.scenarios:
-                        # Se não tiver extensão .json, adiciona
                         filename = s_name if s_name.lower().endswith(".json") else f"{s_name}.json"
                         p = queries_dir / filename
                         
                         if p.exists():
                             selected_paths.append(str(p))
                         else:
-                             # Fallback: tenta o nome original
                             selected_paths.append(s_name)
 
                     args_to_pass = list(selected_paths)
@@ -88,18 +67,13 @@ class AppState:
 
                     loop.main(controller=self.loop_controller, args=args_to_pass)
                 except (Exception, SystemExit) as e:
-                    # Captura erros de inicialização (prepare.py) ou runtime
                     logger.log_erro(f"Loop Thread Crashed: {e}")
-                    print(f"Loop Thread Crashed: {e}") 
                 finally:
                     self.loop_running = False
                     if on_exit_callback:
                         on_exit_callback()
 
-            self.loop_thread = threading.Thread(
-                target=runner,
-                daemon=True
-            )
+            self.loop_thread = threading.Thread(target=runner, daemon=True)
             self.loop_thread.start()
             self.loop_running = True
 
@@ -117,60 +91,64 @@ class AppState:
             self.loop_controller.resume()
             return "RODANDO"
 
-# Arquivo de estado da GUI
-GUI_STATE_FILE = config.DATA_DIR / "gui_config.json"
-
-class NoxApp(tk.Tk):
+class NoxApp(ctk.CTk):
     def __init__(self, scenarios=None, no_prepare=False):
         super().__init__()
+        
+        # Configuração Inicial CTk
+        ctk.set_appearance_mode(config.THEME if config.THEME in ["dark", "light"] else "System")
+        ctk.set_default_color_theme("green") 
+        
         self.title(f"Nox v{config.VERSION}")
         
         # Estado
-        self.state = AppState(scenarios=scenarios or config.SCENARIOS, no_prepare=no_prepare)
+        self.app_state = AppState(scenarios=scenarios or config.SCENARIOS, no_prepare=no_prepare)
         self.log_queue = queue.Queue()
         self.session_downloads = 0
         self.all_items = []
         
-        # Tema
-        self.colors = THEME_LIGHT if config.THEME == "light" else THEME_DARK
-        self.apply_theme()
-        
-        # Carrega Geometria ou usa padrão
+        # Carrega Geometria
         self.load_window_state()
-        self.minsize(400, 500)
+        self.minsize(450, 600)
         
-        # Bind Close Event para salvar estado
+        # Bind Close
         self.protocol("WM_DELETE_WINDOW", self.on_close_window)
 
-        # Configuração de Logger para Queue
+        # Logger
         logger.set_gui_callback(self.queue_log)
 
-        # UI Initialization
+        # UI
         self.create_widgets()
-        self.load_queries_files() # Popula checkboxes
-        self.refresh_data_loop() # Inicia watcher de arquivos
-        self.process_log_queue() # Inicia update da GUI via logs
-
-    def verbose_log(self, msg):
-        # Helper simples para debug local
-        print(f"[GUI DEBUG] {msg}")
+        self.load_queries_files()
+        self.refresh_data_loop()
+        self.process_log_queue()
 
     def load_window_state(self):
-        default_geo = "450x700"
+        default_geo = "500x750"
         try:
             if GUI_STATE_FILE.exists():
                 data = json.loads(GUI_STATE_FILE.read_text(encoding="utf-8"))
                 geo = data.get("geometry", default_geo)
                 self.geometry(geo)
+                
+                # Always on Top
+                top = data.get("always_on_top", False)
+                self.attributes("-topmost", top)
+                self.start_topmost = top # Armazena para setar o switch depois da criação
             else:
                 self.geometry(default_geo)
+                self.start_topmost = False
         except Exception as e:
             print(f"Erro ao carregar estado da janela: {e}")
             self.geometry(default_geo)
+            self.start_topmost = False
 
     def save_window_state(self):
         try:
-            data = {"geometry": self.geometry()}
+            data = {
+                "geometry": self.geometry(),
+                "always_on_top": self.attributes("-topmost")
+            }
             GUI_STATE_FILE.write_text(json.dumps(data), encoding="utf-8")
         except Exception as e:
             print(f"Erro ao salvar estado da janela: {e}")
@@ -179,145 +157,131 @@ class NoxApp(tk.Tk):
         self.save_window_state()
         self.destroy()
 
-    def apply_theme(self):
-        self.configure(bg=self.colors["bg"])
-        
-        style = ttk.Style(self)
-        style.theme_use("default") # Base mais limpa para customizar
-        
-        # Frame
-        style.configure("TFrame", background=self.colors["bg"])
-        style.configure("TLabelframe", background=self.colors["bg"], foreground=self.colors["fg"])
-        style.configure("TLabelframe.Label", background=self.colors["bg"], foreground=self.colors["fg"])
-        
-        # Label
-        style.configure("TLabel", background=self.colors["bg"], foreground=self.colors["fg"])
-        
-        # Button
-        style.configure("TButton", background=self.colors["card"], foreground=self.colors["fg"])
-        style.map("TButton", 
-            background=[("active", self.colors["select_bg"])],
-            foreground=[("active", self.colors["select_fg"])]
-        )
-        
-        # Entry
-        style.configure("TEntry", fieldbackground=self.colors["input_bg"], foreground=self.colors["input_fg"])
-        
-        # Checkbox/Radio
-        style.configure("TCheckbutton", background=self.colors["bg"], foreground=self.colors["fg"])
-        style.configure("TRadiobutton", background=self.colors["bg"], foreground=self.colors["fg"])
-        
-        # Treeview
-        style.configure("Treeview", 
-            background=self.colors["card"], 
-            foreground=self.colors["fg"],
-            fieldbackground=self.colors["card"]
-        )
-        style.map("Treeview", background=[('selected', self.colors["select_bg"])])
-        
-        style.configure("Treeview.Heading", background=self.colors["input_bg"], foreground=self.colors["fg"])
-
-    def verbose_log(self, msg):
-        # Helper simples para debug local
-        print(f"[GUI DEBUG] {msg}")
-
-    def queue_log(self, ts, tipo, msg):
-        self.log_queue.put((ts, tipo, msg))
-
-    def process_log_queue(self):
-        try:
-            while True:
-                ts, tipo, msg = self.log_queue.get_nowait()
-                
-                # Atualiza Log Line
-                self.lbl_log.config(text=f"[{ts}] {msg}", fg=self.get_log_color(tipo))
-                
-                # Conta downloads
-                if tipo == "FINALIZADO" and "completo" in msg:
-                    self.session_downloads += 1
-                    self.lbl_session.config(text=f"Sessão: {self.session_downloads}")
-                
-        except queue.Empty:
-            pass
-        finally:
-            self.after(100, self.process_log_queue)
-
-    def get_log_color(self, tipo):
-        if tipo == "ERRO": return COLOR_RED
-        if tipo == "FINALIZADO": return "#00b0ff" if config.THEME == "light" else "#40c4ff"
-        if tipo == "OK": return COLOR_GREEN
-        return self.colors["fg"]
-
     def create_widgets(self):
-        # --- Header (Status) ---
-        frame_header = ttk.Frame(self, padding=10)
-        frame_header.pack(fill=tk.X)
+        # --- Grid Layout ---
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(3, weight=1) # Lista expande
 
-        self.btn_status = tk.Button(
-            frame_header, 
-            text="PARADO (Clique para Iniciar)", 
-            bg="#757575", fg="#ffffff", # Cinza fixo para parado
+        # --- Header (Status Button) ---
+        self.frame_header = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
+        self.frame_header.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 5))
+        
+        self.btn_status = ctk.CTkButton(
+            self.frame_header,
+            text="PARADO (Clique para Iniciar)",
             font=FONT_BOLD,
             command=self.toggle_status,
-            relief=tk.FLAT,
-            height=2
+            height=40,
+            fg_color="#546e7a", # Cinza/Azulado
+            hover_color="#455a64" 
         )
-        self.btn_status.pack(fill=tk.X)
+        self.btn_status.pack(fill="x")
 
-        # --- Scenarios (Collapsible ish - Simplificado para lista fixa com scroll se precisar) ---
-        frame_scenarios = ttk.LabelFrame(self, text="Cenários", padding=5)
-        frame_scenarios.pack(fill=tk.X, padx=10, pady=5)
-
-        self.scenario_vars = {} # name -> BooleanVar
-        self.frame_checks = ttk.Frame(frame_scenarios)
-        self.frame_checks.pack(fill=tk.X)
-
-        # Botão de Atualizar removido conforme solicitação
-
-        # --- Manual Download ---
-        frame_manual = ttk.Frame(self, padding=10)
-        frame_manual.pack(fill=tk.X)
+        # --- Scenarios (Collapsible) ---
+        self.frame_scenarios = ctk.CTkFrame(self)
+        self.frame_scenarios.grid(row=1, column=0, sticky="ew", padx=10, pady=5)
         
-        lbl_manual = ttk.Label(frame_manual, text="Download Manual:")
-        lbl_manual.pack(side=tk.LEFT)
+        # Header
+        self.frame_scenarios_header = ctk.CTkFrame(self.frame_scenarios, fg_color="transparent")
+        self.frame_scenarios_header.pack(fill="x", padx=5, pady=5)
+        
+        self.lbl_scenarios_title = ctk.CTkLabel(self.frame_scenarios_header, text="Cenários Ativos", font=FONT_BOLD)
+        self.lbl_scenarios_title.pack(side="left", padx=5)
+        
+        self.btn_toggle_scenarios = ctk.CTkButton(
+            self.frame_scenarios_header, 
+            text="▼ Mostrar", 
+            width=80, 
+            height=24,
+            command=self.toggle_scenarios,
+            fg_color="transparent", 
+            border_width=1, 
+            text_color=("gray10", "gray90")
+        )
+        self.btn_toggle_scenarios.pack(side="right", padx=5)
+
+        # Content (Initially Hidden)
+        self.scroll_checks = ctk.CTkScrollableFrame(self.frame_scenarios, height=0, fg_color="transparent")
+        
+        self.scenarios_expanded = False
+        self.scenario_vars = {} # name -> CTkCheckBox
+
+        # --- Manual Download & Search ---
+        self.frame_mid = ctk.CTkFrame(self)
+        self.frame_mid.grid(row=2, column=0, sticky="ew", padx=10, pady=5)
+
+        # Download Manual
+        lbl_manual = ctk.CTkLabel(self.frame_mid, text="Download Manual", font=("Roboto", 12))
+        lbl_manual.grid(row=0, column=0, sticky="w", padx=10, pady=5)
 
         self.var_server = tk.StringVar(value="HAC")
-        rb_hac = ttk.Radiobutton(frame_manual, text="HAC", variable=self.var_server, value="HAC")
-        rb_hac.pack(side=tk.LEFT, padx=5)
-        rb_hbr = ttk.Radiobutton(frame_manual, text="HBR", variable=self.var_server, value="HBR")
-        rb_hbr.pack(side=tk.LEFT, padx=5)
+        
+        rb_hac = ctk.CTkRadioButton(self.frame_mid, text="HAC", variable=self.var_server, value="HAC", width=50)
+        rb_hac.grid(row=0, column=1, sticky="w", padx=5)
+        
+        rb_hbr = ctk.CTkRadioButton(self.frame_mid, text="HBR", variable=self.var_server, value="HBR", width=50)
+        rb_hbr.grid(row=0, column=2, sticky="w", padx=5)
 
-        self.entry_an = ttk.Entry(frame_manual, width=15)
-        self.entry_an.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.entry_an = ctk.CTkEntry(self.frame_mid, placeholder_text="Accession Number")
+        self.entry_an.grid(row=0, column=3, sticky="ew", padx=5)
         self.entry_an.bind("<Return>", lambda e: self.do_manual_download())
+        self.frame_mid.grid_columnconfigure(3, weight=1)
 
-        btn_dl = ttk.Button(frame_manual, text="Baixar", command=self.do_manual_download, width=8)
-        btn_dl.pack(side=tk.LEFT)
+        btn_dl = ctk.CTkButton(self.frame_mid, text="Baixar", width=60, command=self.do_manual_download)
+        btn_dl.grid(row=0, column=4, sticky="e", padx=10)
 
-        # --- Search ---
-        frame_search = ttk.Frame(self, padding=(10, 0))
-        frame_search.pack(fill=tk.X)
-        self.entry_search = ttk.Entry(frame_search)
-        self.entry_search.pack(fill=tk.X)
-        self.entry_search.insert(0, "")
+        # Search
+        self.entry_search = ctk.CTkEntry(self.frame_mid, placeholder_text="Filtrar por nome, AN, modalidade...")
+        self.entry_search.grid(row=1, column=0, columnspan=5, sticky="ew", padx=10, pady=(5,10))
         self.entry_search.bind("<KeyRelease>", self.filter_list)
-        # Label removido conforme solicitação
 
-        # --- List View ---
-        frame_list = ttk.Frame(self, padding=10)
-        frame_list.pack(fill=tk.BOTH, expand=True)
+        # --- List View (Treeview via Custom Style) ---
+        self.frame_list = ctk.CTkFrame(self, fg_color="transparent")
+        self.frame_list.grid(row=3, column=0, sticky="nsew", padx=10, pady=5)
+
+        # Treeview Style
+        style = ttk.Style()
+        style.theme_use("default")
+        
+        # Cores Treeview Compatíveis com Dark/Light
+        bg_color = "#2b2b2b" if ctk.get_appearance_mode() == "Dark" else "#ffffff"
+        fg_color = "#ffffff" if ctk.get_appearance_mode() == "Dark" else "#000000"
+        field_bg = "#2b2b2b" if ctk.get_appearance_mode() == "Dark" else "#ffffff"
+        head_bg  = "#1f1f1f" if ctk.get_appearance_mode() == "Dark" else "#e0e0e0"
+
+
+        style.configure("Treeview", 
+            background=bg_color, 
+            foreground=fg_color, 
+            fieldbackground=field_bg,
+            borderwidth=0,
+            rowheight=22, # Altura menor
+            font=("Roboto", 10) # Fonte menor
+        )
+        style.map('Treeview', background=[('selected', '#00e676')], foreground=[('selected', 'black')])
+        
+        style.configure("Treeview.Heading", 
+            background=head_bg, 
+            foreground=fg_color, 
+            font=("Roboto", 11, "bold"),
+            relief="flat"
+        )
+        style.map("Treeview.Heading", background=[('active', head_bg)])
 
         cols = ("AN", "Nome", "Status")
-        self.tree = ttk.Treeview(frame_list, columns=cols, show="headings", selectmode="browse")
+        self.tree = ttk.Treeview(self.frame_list, columns=cols, show="headings", selectmode="browse")
+        
         self.tree.heading("AN", text="AN")
         self.tree.heading("Nome", text="Exame")
         self.tree.heading("Status", text="Status")
         
-        self.tree.column("AN", width=80, anchor="center")
-        self.tree.column("Nome", width=250)
+        self.tree.column("AN", width=90, anchor="center")
+        self.tree.column("Nome", width=300)
         self.tree.column("Status", width=80, anchor="center")
 
-        scrollbar = ttk.Scrollbar(frame_list, orient=tk.VERTICAL, command=self.tree.yview)
+        # Scrollbar customizada não tem no CTk facilmente para widget ttk
+        # Usaremos scrollbar simples do ttk estilizada ou padrão
+        scrollbar = ttk.Scrollbar(self.frame_list, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscroll=scrollbar.set)
         
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -326,36 +290,88 @@ class NoxApp(tk.Tk):
         self.tree.bind("<Double-1>", self.on_item_double_click)
 
         # --- Footer ---
-        frame_footer = ttk.Frame(self, padding=10)
-        frame_footer.pack(fill=tk.X, side=tk.BOTTOM)
+        self.frame_footer = ctk.CTkFrame(self)
+        self.frame_footer.grid(row=4, column=0, sticky="ew", padx=10, pady=10)
 
-        # Config / Slider
-        frame_cfg = ttk.Frame(frame_footer)
-        frame_cfg.pack(fill=tk.X, pady=5)
+        # Session Count
+        self.lbl_session = ctk.CTkLabel(self.frame_footer, text="Sessão: 0", font=FONT_BOLD)
+        self.lbl_session.pack(side="left", padx=10)
         
-        self.lbl_session = ttk.Label(frame_cfg, text="Sessão: 0", font=FONT_BOLD)
-        self.lbl_session.pack(side=tk.LEFT)
+        # Always on Top Switch (Pack Right First -> Rightmost)
+        self.switch_top = ctk.CTkSwitch(
+            self.frame_footer, 
+            text="Topo", 
+            command=self.toggle_topmost,
+            width=50,
+            font=("Roboto", 11)
+        )
+        self.switch_top.pack(side="right", padx=10)
+        if self.start_topmost:
+            self.switch_top.select()
 
+        # Label Manter (Pack Right Next -> Left of Switch)
+        self.lbl_max = ctk.CTkLabel(self.frame_footer, text=f"Manter: {config.MAX_EXAMES}")
+        self.lbl_max.pack(side="right", padx=10)
+
+        # Slider (Pack Right Next -> Left of Label)
         slider_limit = max(config.SLIDER_MAX, config.MAX_EXAMES)
-        self.scale_max = tk.Scale(
-            frame_cfg, from_=5, to=slider_limit, 
-            orient=tk.HORIZONTAL, showvalue=0, command=self.on_slider_change,
-            bg=self.colors["bg"], fg=self.colors["fg"], highlightthickness=0
+        self.scale_max = ctk.CTkSlider(
+            self.frame_footer, from_=5, to=slider_limit, 
+            command=self.on_slider_change,
         )
         self.scale_max.set(config.MAX_EXAMES)
-        self.scale_max.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
-
-        self.lbl_max = ttk.Label(frame_cfg, text=f"Manter: {config.MAX_EXAMES}")
-        self.lbl_max.pack(side=tk.RIGHT)
+        self.scale_max.pack(side="right", fill="x", expand=True, padx=20)
 
         # Log Line
-        self.lbl_log = tk.Label(frame_footer, text="Aguardando...", fg=self.colors["fg"], bg=self.colors["bg"], anchor="w")
-        self.lbl_log.pack(fill=tk.X)
+        self.lbl_log = ctk.CTkLabel(self, text="Aguardando...", anchor="w", text_color="gray")
+        self.lbl_log.grid(row=5, column=0, sticky="ew", padx=15, pady=(0, 5))
 
+    def queue_log(self, ts, tipo, msg):
+        self.log_queue.put((ts, tipo, msg))
+
+    def process_log_queue(self):
+        try:
+            while True:
+                ts, tipo, msg = self.log_queue.get_nowait()
+                color = self.get_log_color(tipo)
+                self.lbl_log.configure(text=f"[{ts}] {msg}", text_color=color)
+                
+                if tipo == "FINALIZADO" and "completo" in msg:
+                    self.session_downloads += 1
+                    self.lbl_session.configure(text=f"Sessão: {self.session_downloads}")
+        except queue.Empty:
+            pass
+        finally:
+            self.after(100, self.process_log_queue)
+
+    def get_log_color(self, tipo):
+        if tipo == "ERRO": return COLOR_RED
+        if tipo == "FINALIZADO": return "#00b0ff" # Azul claro
+        if tipo == "OK": return COLOR_GREEN
+        return "gray" if ctk.get_appearance_mode() == "Light" else "silver"
+
+    def toggle_topmost(self):
+        val = self.switch_top.get()
+        self.attributes("-topmost", bool(val))
+
+    def toggle_scenarios(self):
+        if self.scenarios_expanded:
+            self.scroll_checks.pack_forget()
+            self.btn_toggle_scenarios.configure(text="▼ Mostrar")
+            self.scenarios_expanded = False
+        else:
+            self.scroll_checks.configure(height=150)
+            self.scroll_checks.pack(fill="x", padx=5, pady=5)
+            self.btn_toggle_scenarios.configure(text="▲ Ocultar")
+            self.scenarios_expanded = True
+            
+    def update_scenarios_label(self):
+        count = len(self.app_state.scenarios)
+        self.lbl_scenarios_title.configure(text=f"Cenários ({count} ativos)")
 
     def load_queries_files(self):
         # Limpa widgets anteriores
-        for widget in self.frame_checks.winfo_children():
+        for widget in self.scroll_checks.winfo_children():
             widget.destroy()
         
         q_dir = Path("queries")
@@ -364,50 +380,52 @@ class NoxApp(tk.Tk):
             
         files = sorted([f.stem for f in q_dir.glob("*.json")])
         
-        # Atualiza self.scenario_vars preservando estados se possível? Não, recriando é mais seguro por enquanto.
         self.scenario_vars = {}
-        
-        # Lista dos que devem estar marcados
-        current_active = self.state.scenarios
+        current_active = self.app_state.scenarios
 
         for f in files:
-            var = tk.BooleanVar(value=(f in current_active))
-            chk = ttk.Checkbutton(self.frame_checks, text=f, variable=var, command=lambda name=f, v=var: self.on_scenario_toggle(name, v))
-            chk.pack(anchor="w", padx=10)
-            self.scenario_vars[f] = var
+            chk = ctk.CTkCheckBox(
+                self.scroll_checks, 
+                text=f, 
+                command=lambda name=f: self.on_scenario_toggle(name)
+            )
+            if f in current_active:
+                chk.select()
+            chk.pack(anchor="w", padx=5, pady=2)
+            self.scenario_vars[f] = chk
+            
+        self.update_scenarios_label()
 
-    def on_scenario_toggle(self, name, var):
-        if var.get():
-            if name not in self.state.scenarios:
-                self.state.scenarios.append(name)
+    def on_scenario_toggle(self, name):
+        chk = self.scenario_vars[name]
+        if chk.get():
+            if name not in self.app_state.scenarios:
+                self.app_state.scenarios.append(name)
         else:
-            if name in self.state.scenarios:
-                self.state.scenarios.remove(name)
+            if name in self.app_state.scenarios:
+                self.app_state.scenarios.remove(name)
         
-        # Salva config
-        self.save_config_value("SETTINGS", "scenarios", json.dumps(self.state.scenarios))
-        logger.log_info(f"Cenários ativos: {self.state.scenarios}")
+        self.save_config_value("SETTINGS", "scenarios", json.dumps(self.app_state.scenarios))
+        logger.log_info(f"Cenários ativos: {self.app_state.scenarios}")
+        self.update_scenarios_label()
 
     def toggle_status(self):
-        if not self.state.loop_running:
-            # START
-            self.state.start_loop(on_exit_callback=self.on_loop_exit)
+        if not self.app_state.loop_running:
+            self.app_state.start_loop(on_exit_callback=self.on_loop_exit)
             self.update_status_ui("RODANDO")
         else:
-            # PAUSE / RESUME logic
-            st = self.state.toggle_pause_loop()
+            st = self.app_state.toggle_pause_loop()
             self.update_status_ui(st)
 
     def update_status_ui(self, status):
         if status == "RODANDO":
-            self.btn_status.config(text="MONITORANDO (Clique para Pausar)", bg=COLOR_GREEN, fg=COLOR_DARK)
+            self.btn_status.configure(text="MONITORANDO (Clique para Pausar)", fg_color=COLOR_GREEN, text_color="black")
         elif status == "PAUSADO":
-            self.btn_status.config(text="PAUSADO (Clique para Retomar)", bg="orange", fg=COLOR_WHITE)
-        else: # Parado
-            self.btn_status.config(text="PARADO (Clique para Iniciar)", bg=COLOR_GRAY, fg=COLOR_WHITE)
+            self.btn_status.configure(text="PAUSADO (Clique para Retomar)", fg_color="#ffa000", text_color="white")
+        else:
+            self.btn_status.configure(text="PARADO (Clique para Iniciar)", fg_color="#546e7a", text_color="white")
 
     def on_loop_exit(self):
-        # Chamado via thread, usar after para mexer na UI
         self.after(0, lambda: self.update_status_ui("PARADO"))
 
     def do_manual_download(self):
@@ -429,30 +447,24 @@ class NoxApp(tk.Tk):
     def filter_list(self, event=None):
         term = self.entry_search.get().lower().strip()
         
-        # Limpa treeview
         for item in self.tree.get_children():
             self.tree.delete(item)
             
         for i in self.all_items:
-            # Busca em AN, Nome, Desc, Modality
             combo = f"{i.get('an','')} {i.get('nome','')} {i.get('desc','')} {i.get('mod','')}".lower()
             if not term or term in combo:
                 values = (i.get("an"), f"{i.get('nome')} - {i.get('desc')}", i.get("qtd"))
-                # Armazena path no item tags ou ID se precisar, vamos usar o ID como indice ou algo assim
-                # O ID da row será o PATH do dicom para recuperar no double click
                 self.tree.insert("", tk.END, iid=i["path"], values=values)
 
     def refresh_data_loop(self):
         try:
             new_items = self.scan_recentes()
-            # Diferença básica para não piscar tela toda hora? 
-            # Por enquanto, redraw bruto pois scan_recentes lê disco.
             self.all_items = new_items
             self.filter_list()
         except Exception as e:
             print(f"Erro refresh: {e}")
         finally:
-            self.after(5000, self.refresh_data_loop) # 5 segundos
+            self.after(5000, self.refresh_data_loop)
 
     def scan_recentes(self):
         if not config.PROGRESS_DIR.exists(): return []
@@ -485,10 +497,9 @@ class NoxApp(tk.Tk):
         return results
 
     def on_item_double_click(self, event):
-        selected_id = self.tree.focus() # Retorna o IID que setamos como Path
+        selected_id = self.tree.focus()
         if selected_id:
             path = selected_id
-            # Recupera AN dos values
             item = self.tree.item(selected_id)
             an = item['values'][0]
             self.open_viewer(path, an)
@@ -518,17 +529,15 @@ class NoxApp(tk.Tk):
         else: subprocess.Popen(["xdg-open", path])
 
     def on_slider_change(self, value):
-        val = int(float(value))
-        self.lbl_max.config(text=f"Manter: {val}")
+        val = int(value)
+        self.lbl_max.configure(text=f"Manter: {val}")
         config.MAX_EXAMES = val
         self.save_config_value("SETTINGS", "max_exames", val)
-        # Trigger cleanup
         threading.Thread(target=self.trigger_cleanup, daemon=True).start()
 
     def trigger_cleanup(self):
         try:
             loop.verificar_retencao_exames()
-            # O refresh loop vai pegar as mudanças na próxima iteração
         except: pass
 
     def save_config_value(self, section, key, value):
@@ -545,14 +554,12 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Nox Assistant - Monitoramento de Downloads DICOM")
     
-    # Modos de operação
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--gui", "-g", action="store_true", help="Executa com Interface Gráfica (Padrão)")
     group.add_argument("--cli", "-c", action="store_true", help="Executa em modo Linha de Comando")
     
-    # Opções globais
-    parser.add_argument("--no-prepare", action="store_true", help="Pular etapa de preparação (Playwright/Login)")
-    parser.add_argument("cenarios", metavar="CENARIOS", nargs="*", help="Cenários específicos (ex: MONITOR MONITOR_RX)")
+    parser.add_argument("--no-prepare", action="store_true", help="Pular etapa de preparação")
+    parser.add_argument("cenarios", metavar="CENARIOS", nargs="*", help="Cenários específicos")
     
     args = parser.parse_args()
     
@@ -570,6 +577,6 @@ if __name__ == "__main__":
             sys.exit(0)
     else:
         # GUI Mode
-        print("--- INICIANDO O NOX (TKINTER GUI) ---")
+        print("--- INICIANDO O NOX (CUSTOM TKINTER) ---")
         app = NoxApp(scenarios=cenarios, no_prepare=args.no_prepare)
         app.mainloop()
