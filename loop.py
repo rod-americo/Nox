@@ -247,9 +247,14 @@ def verificar_retencao_exames():
 # ============================================================
 
 def main(**kwargs):
-    parser = argparse.ArgumentParser()
-    parser.add_argument("cenarios", nargs="*", help="Caminhos para arquivos JSON de Payload")
-    parser.add_argument("--no-prepare", action="store_true", help="Pular etapa de preparação")
+    parser = argparse.ArgumentParser(description="Orquestrador Nox (Loop)", add_help=False)
+    
+    arg_group = parser.add_argument_group("Argumentos")
+    opt_group = parser.add_argument_group("Opções")
+
+    arg_group.add_argument("cenarios", nargs="*", help="Lista de cenários (ex: MONITOR) ou arquivos JSON")
+    opt_group.add_argument("--no-prepare", action="store_true", help="Pular etapa de preparação (Login/Sessão)")
+    opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
     
     # Se chamado via GUI, args podem vir vazios ou customizados
     if "args" in kwargs:
@@ -257,10 +262,20 @@ def main(**kwargs):
     else:
         args = parser.parse_args()
     
-    # Prioridade: 1. Argumentos CLI (Arquivos), 2. config.SCENARIOS
+    # Prioridade: 1. Argumentos CLI, 2. config.SCENARIOS
     if args.cenarios:
-        # Argumentos foram passados explicitamente
-        cenarios = args.cenarios
+        final_scenarios = []
+        for item in args.cenarios:
+            # 1. Se for arquivo ou caminho existente, usa direto
+            if item.lower().endswith(".json") or os.path.exists(item):
+                final_scenarios.append(item)
+            else:
+                # 2. Se for nome simples, mapeia para data/payload_{NAME}.json
+                # (Assumindo que prepare.py gerou este arquivo anteriormente)
+                p = config.DATA_DIR / f"payload_{item}.json"
+                final_scenarios.append(str(p))
+        
+        cenarios = final_scenarios
     else:
         # Sem argumentos: usa config.SCENARIOS e converte para queries/*.json
         from pathlib import Path

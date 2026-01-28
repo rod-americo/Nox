@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-radiant/config.py — Configuration Loader
+config.py — Configuration Loader
 ----------------------------------------
 
 Este módulo gerencia as configurações do Nox/RadiAnt Assistant.
@@ -60,7 +60,7 @@ import configparser
 from pathlib import Path
 
 # === Versão do Aplicativo ===
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 # === Caminho base e arquivo INI ===
 BASE_DIR = Path(sys.executable if getattr(sys, "frozen", False) else __file__).resolve().parent

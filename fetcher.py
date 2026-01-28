@@ -27,10 +27,7 @@ from math import ceil
 from datetime import datetime, timedelta
 
 # Tenta importar tqdm para barra de progresso (apenas modo raw)
-try:
-    from tqdm import tqdm
-except ImportError:
-    tqdm = None
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 
 from logger import log_info, log_erro, log_debug, log, log_ok, log_aviso
 from config import (
@@ -358,38 +355,51 @@ def fetch_raw_mode(nome_cenario, dt_inicio=None, dt_fim=None, no_tqdm=False, ori
     log_info(f"[{nome_cenario}][FETCH] exp={total_registros} pg={total_paginas}")
 
     # Barra de Progresso (se disponível e útil)
-    pbar = None
-    usar_tqdm = (not no_tqdm) and (tqdm is not None) and (total_paginas > 5)
-    
-    if usar_tqdm:
-        pbar = tqdm(total=total_paginas, desc=nome_cenario, unit="pág")
-        pbar.update(1)
+    # Barra de Progresso (se disponível e útil)
+    usar_rich = (not no_tqdm) and (total_paginas > 5)
     
     start_time = time.time()
     last_log_time = start_time
 
-    while True:
-        if not dados:
-            break
+    if usar_rich:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
+            transient=True
+        ) as progress:
+            task_id = progress.add_task(f"[cyan]{nome_cenario}", total=total_paginas)
+            progress.update(task_id, completed=1)
+
+            while True:
+                if not dados:
+                    break
+                    
+                acumulado.extend(dados)
+                pagina += 1
+                
+                dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
+                
+                progress.update(task_id, advance=1)
+    else:
+        while True:
+            if not dados:
+                break
+                
+            acumulado.extend(dados)
             
-        acumulado.extend(dados)
-        
-        # Log periódico a cada 10s
-        if time.time() - last_log_time > 10:
-            if total_paginas > 1:
-                log_info(f"[{nome_cenario}][FETCH] prog: {pagina}/{total_paginas} ({len(acumulado)})")
-            else:
-                log_info(f"[{nome_cenario}][FETCH] prog: pg {pagina} ({len(acumulado)})")
-            last_log_time = time.time()
+            # Log periódico a cada 10s
+            if time.time() - last_log_time > 10:
+                if total_paginas > 1:
+                    log_info(f"[{nome_cenario}][FETCH] prog: {pagina}/{total_paginas} ({len(acumulado)})")
+                else:
+                    log_info(f"[{nome_cenario}][FETCH] prog: pg {pagina} ({len(acumulado)})")
+                last_log_time = time.time()
 
-        pagina += 1
-        dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
-        
-        if usar_tqdm and pbar:
-             pbar.update(1)
-
-    if pbar:
-        pbar.close()
+            pagina += 1
+            dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
     
     # 4. Salvar
     outfile = DATA_DIR / f"{nome_cenario.lower()}_full.json"
@@ -667,20 +677,28 @@ def api_fetch(nome_cenario, dt_inicio=None, dt_fim=None):
 # ============================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Fetcher Cockpit CLI")
-    parser.add_argument("cenarios", nargs="*", help="Lista de cenários (ex: MONITOR HOBRA)")
-    parser.add_argument("--json", action="store_true", help="Saída JSON pura (apenas ANs)")
-    parser.add_argument("--raw", action="store_true", help="Modo RAW: Salva JSON completo em disco (comportamento Munin)")
-    parser.add_argument("--inicio", type=str, help="Data inicio YYYY-MM-DD (apenas modo --raw)")
-    parser.add_argument("--fim", type=str, help="Data fim YYYY-MM-DD (apenas modo --raw)")
-    parser.add_argument("--an", nargs="+", help="Busca por lista de Accession Numbers (ignora datas/cenários)")
-    parser.add_argument("--an-file", type=str, help="Caminho de arquivo JSON contendo lista de ANs")
-    parser.add_argument("--no-tqdm", action="store_true", help="Desativa barra de progresso (útil para logs)")
+    parser = argparse.ArgumentParser(description="Fetcher Cockpit CLI", add_help=False)
+    
+    # Grupos
+    arg_group = parser.add_argument_group("Argumentos")
+    opt_group = parser.add_argument_group("Opções")
+    flt_group = parser.add_argument_group("Filtros de Origem")
+
+    arg_group.add_argument("cenarios", nargs="*", help="Lista de cenários ou arquivo JSON (ex: queries/monitor.json)")
+
+    opt_group.add_argument("--json", action="store_true", help="Saída JSON pura (apenas ANs)")
+    opt_group.add_argument("--raw", action="store_true", help="Modo RAW: Salva JSON completo em disco (comportamento Munin)")
+    opt_group.add_argument("--inicio", type=str, help="Data inicio YYYY-MM-DD (apenas modo --raw)")
+    opt_group.add_argument("--fim", type=str, help="Data fim YYYY-MM-DD (apenas modo --raw)")
+    opt_group.add_argument("--an", nargs="+", help="Busca por lista de Accession Numbers (ignora datas/cenários)")
+    opt_group.add_argument("--an-file", type=str, help="Caminho de arquivo JSON contendo lista de ANs")
+    opt_group.add_argument("--no-tqdm", action="store_true", help="Desativa barra de progresso (útil para logs)")
+    opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
 
     # Filtros de Origem
-    parser.add_argument("--eletivo", action="store_true", help="Filtra por Eletivo (IDs 1, 2)")
-    parser.add_argument("--urgente", action="store_true", help="Filtra por Urgente (ID 3)")
-    parser.add_argument("--internado", action="store_true", help="Filtra por Internado (ID 4)")
+    flt_group.add_argument("--eletivo", action="store_true", help="Filtra por Eletivo (IDs 1, 2)")
+    flt_group.add_argument("--urgente", action="store_true", help="Filtra por Urgente (ID 3)")
+    flt_group.add_argument("--internado", action="store_true", help="Filtra por Internado (ID 4)")
     
     args = parser.parse_args()
 
@@ -712,6 +730,30 @@ def main():
             for c in args.cenarios:
                 fetch_raw_mode(c, dt_inicio=args.inicio, dt_fim=args.fim, no_tqdm=args.no_tqdm, origens=origens_ids)
             return
+            
+        # --- ROTA FETCH PADRÃO (NOX) ---
+        if args.cenarios:
+            arquivos_json = []
+            nomes_legados = []
+            
+            for item in args.cenarios:
+                # Se terminar com .json ou for um arquivo existente, trata como path
+                p = Path(item)
+                if item.lower().endswith(".json") or p.exists():
+                    arquivos_json.append(str(item))
+                else:
+                    nomes_legados.append(item)
+            
+            # 1. Processa Arquivos JSON (Moderno)
+            if arquivos_json:
+                fetch_varios_arquivos(arquivos_json)
+                
+            # 2. Processa Nomes Legados (Compatibilidade)
+            if nomes_legados:
+                # log_info(f"Processando cenários legados: {nomes_legados}")
+                fetch_varios(nomes_legados)
+                
+            return
 
         # --- ROTA BUSCA POR AN ---
         if args.an or args.an_file:
@@ -742,6 +784,7 @@ def main():
             if not lista_final_ans:
                 log_erro("Nenhum AN válido para processar.")
                 return
+
 
             log_info(f"[WATCHDOG][FETCH] start: ans={len(lista_final_ans)}")
             

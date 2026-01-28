@@ -165,6 +165,11 @@ def preparar(cenarios: list[str]):
         data_dir.mkdir(parents=True, exist_ok=True)
 
         for c in cenarios:
+            # Se for arquivo JSON, ignora geração de payload (assume que já existe)
+            if c.lower().endswith(".json") or Path(c).exists():
+                log_info(f"Argumento '{Path(c).name}' identificado como arquivo. Pulando geração de payload (Legacy).")
+                continue
+
             rule = SCENARIO_RULES.get(c)
             if not rule:
                 log_erro(f"Cenário desconhecido: {c}. Ignorando.")
@@ -337,19 +342,27 @@ def mapear_cenarios():
 # ============================================================
 
 def main():
+    import argparse # Garantir import local caso não tenha no topo
     set_logfile(config.LOG_DIR / "prepare.log")
     
-    # Se não houver argumentos, executa apenas login/sessão
-    if len(sys.argv) < 2:
-        log_info("Nenhum argumento fornecido. Executando apenas login e extração de sessão.")
-        preparar([])  # Lista vazia de cenários
-        return
+    parser = argparse.ArgumentParser(description="Ferramenta de Preparação e Login (Cockpit)", add_help=False)
+    
+    # Grupos
+    arg_group = parser.add_argument_group("Argumentos")
+    opt_group = parser.add_argument_group("Opções")
+    
+    arg_group.add_argument("cenarios", nargs="*", help="Lista de cenários ou arquivos JSON (para geração de payload legado)")
+    
+    opt_group.add_argument("--mapear-cenarios", action="store_true", help="Faz login e lista todos os cenários disponíveis no site")
+    opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
+    
+    args = parser.parse_args()
 
-    if "--mapear-cenarios" in sys.argv:
+    if args.mapear_cenarios:
         mapear_cenarios()
     else:
-        cenarios = [c.strip() for c in sys.argv[1:]]
-        preparar(cenarios)
+        # Se não houver cenários, prepara com lista vazia (apenas login)
+        preparar(args.cenarios)
 
 
 if __name__ == "__main__":

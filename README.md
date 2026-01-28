@@ -1,4 +1,4 @@
-# Nox — WADO/DICOM Assistant
+# Nox — WADO/DICOM Assistant v2.1.0
 
 **Nox** é um orquestrador leve e moderno para download e gerenciamento de exames DICOM via protocolo WADO. Ele atua como um *middleware* inteligente entre o RIS/PACS e o visualizador de imagens (RadiAnt, OsiriX, Horos), garantindo que os exames estejam prontos para visualização sem intervenção manual.
 
@@ -23,9 +23,9 @@
     *   **Auto-Move**: Move exames baixados para a pasta `Incoming` do OsiriX (modo Transient).
 
 ### Interface & Usabilidade
-*   **GUI Moderna (Flet)**: Interface responsiva, Always-on-Top, com tema ajustável.
+*   **GUI Nativa (Tkinter)**: Interface leve e rápida, com suporte a temas (Dark/Light) e persistência de geometria.
 *   **Lista Dinâmica**: Exibe exames ordenados alfabeticamente por Nome do Paciente.
-*   **Controle de Retenção Dinâmico**: Slider na interface para ajustar o limite de exames (`max_exames`) em tempo real (5 a 200).
+*   **Controle de Retenção Dinâmico**: Slider na interface para ajustar o limite de exames (`max_exames`) em tempo real.
 *   **Download Manual**: Selecione o servidor (HBR/HAC) e digite apenas o *Accession Number* para baixar.
 *   **Busca e Filtragem**: Barra de busca para filtrar exames instantaneamente por Nome, AN, Modalidade ou Descrição.
 
@@ -74,38 +74,11 @@ viewer = osirix
 scenarios = ["plantao-rx", "plantao-tc-rm-us"]
 ```
 
-**💡 Configuração de Sistema Operacional:**
-Configure `[OPERATIONAL SYSTEM] system` no `config.ini`:
-- **`windows`**: Usa `radiant_dicom` (ex: `C:\DICOM`)
-- **`linux`**: Usa `linux_dicom` (ex: `data/DICOM` ou `/mnt/storage/DICOM`)
-- **`macos`**: Usa `linux_dicom` (ex: `data/DICOM`)
-
 ---
 
 ## ▶️ Como Executar
 
-O projeto conta com um script unificado `nox.py`.
-
 ### Instalação
-
-#### Pré-requisitos: Git
-
-Você precisará do **Git** para baixar o projeto.
-
-*   **Windows 🪟**
-    *   **Instalador**: [git-scm.com](https://git-scm.com/download/win)
-    *   **Terminal**: `winget install --id Git.Git -e --source winget`
-
-*   **macOS 🍎**
-    *   **Opção 1 (Recomendada - Xcode Command Line Tools)**:
-        Abra o terminal e digite:
-        ```bash
-        xcode-select --install
-        ```
-    *   **Opção 2 (Homebrew)**:
-        ```bash
-        brew install git
-        ```
 
 #### Windows 🪟
 
@@ -127,399 +100,85 @@ Você precisará do **Git** para baixar o projeto.
     playwright install chromium
     ```
 
-#### macOS 🍎
+#### macOS 🍎 / Linux 🐧
 
-1.  **Clone o repositório:**
+1.  **Clone e Configure:**
     ```bash
     git clone https://github.com/rod-americo/Nox.git
     cd Nox
-    ```
-
-2.  **Crie e ative o ambiente virtual:**
-    ```bash
     python3 -m venv venv
     source venv/bin/activate
-    ```
-
-3.  **Instale as dependências:**
-    ```bash
     pip install -r requirements.txt
     playwright install chromium
     ```
 
-#### Linux 🐧 (Headless)
-
-1.  **Clone o repositório:**
-    ```bash
-    git clone https://github.com/rod-americo/Nox.git
-    cd Nox
-    ```
-
-2.  **Crie e ative o ambiente virtual:**
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    ```
-
-3.  **Instale as dependências:**
-    ```bash
-    pip install -r requirements.txt
-    playwright install chromium
-    ```
-
-4.  **Configure o `config.ini`:**
-    - Defina `[OPERATIONAL SYSTEM] system = linux`
-    - Configure `linux_dicom` em `[PATHS]` (default: `data/DICOM`)
-    - Pode ser caminho absoluto: `/mnt/storage/DICOM`
-    - A estrutura de saída é: `linux_dicom/AN/*.dcm`
-
-### Execução
-
-Sempre ative o ambiente virtual a partir do diretório do projeto antes de rodar (`.\venv\Scripts\Activate` ou `source venv/bin/activate`).
-
-#### Modo GUI (Interface Gráfica)
-```bash
-python nox.py
-```
-*Funcionalidades da GUI:*
-*   **Seleção de Cenários em Tempo Real**: Novo painel "Cenários" permite carregar a lista completa do servidor e marcar/desmarcar quais devem ser monitorados. A escolha é salva automaticamente.
-*   **Slider Dinâmico**: O limite do slider ajusta-se ao valor de `slider_max` no INI.
-*   **Download Manual**: Interface intuitiva com botões de rádio para escolha do servidor.
-
-#### Modo CLI (Terminal)
-Ideal para debug ou execução leve. Os cenários são lidos do `config.ini` por padrão.
-```bash
-python nox.py --cli
-```
-*Opções:*
-*   `python nox.py --cli`: Usa cenários do config.ini
-*   `python nox.py --cli plantao-rx`: Roda CLI apenas com o cenário plantao-rx
-*   `python nox.py --cli --no-prepare`: Roda CLI pulando a preparação
-
 ---
 
----
-
-## 📋 Como Funcionam os Cenários
-
-O Nox usa **cenários** para definir quais exames devem ser monitorados e baixados. Existem duas formas de trabalhar com cenários:
-
-### 1. Cenários Pré-Definidos (Hardcoded)
-Regras fixas no código do `fetcher.py`:
-- `MONITOR`, `MONITOR_RX`, `DIA_E`, `DIA_U`, `DIAS_I`, etc.
-- Úteis para testes rápidos
-- Não requerem arquivos de configuração
-
-### 2. Cenários Personalizados (Arquivos JSON)
-Arquivos na pasta `queries/` com filtros customizados:
-- `plantao-rx.json`: Radiografias do escopo do Plantão
-- `plantao-tc-rm-us.json`: TC/RM/US do PS e de Internados
-- Você pode criar seus próprios arquivos com filtros específicos
-
-### Configuração no `config.ini`
-```ini
-scenarios = ["plantao-rx", "plantao-tc-rm-us"]
-```
-- Liste os **nomes dos arquivos** (sem extensão `.json`)
-- O sistema converte automaticamente para `queries/plantao-rx.json`, etc.
-- Quando `nox.py` ou `loop.py` rodam sem argumentos, usam esta lista
-
-### Fluxo de Uso
-1. **GUI sem argumentos**: `python nox.py` → Usa cenários do `config.ini`
-2. **CLI sem argumentos**: `python loop.py` → Usa cenários do `config.ini`
-3. **Com argumentos**: `python nox.py plantao-rx` → Usa apenas o cenário especificado
-
----
-
-## 🛠 Estrutura Técnica
-
-*   **`nox.py`**: Ponto de entrada e Interface Gráfica (Flet). Gerencia estado (`AppState`), contador de sessão e lista de exames.
-*   **`loop.py`**: Orquestrador (CLI/Backend). Monitora ciclo de vida, verifica retenção (`verificar_retencao_exames`) e dispara downloads.
-*   **`downloader.py`**: Motor de download. Lida com retry, extração de metadados DICOM e lógica `Storage Mode` (move vs save).
-*   **`config.py`**: Carregador de configurações singleton.
-*   **`prepare.py`**: Automação *headless* (Playwright) para login e captura de tokens.
-
-### Utilitários
-
-#### Mapear Cenários (`prepare.py`)
-Lista todos os cenários disponíveis na conta configurada.
-```bash
-python prepare.py --mapear-cenarios
-```
-
-#### Download em Batch (`downloader.py`)
-Baixa exames em massa usando uma lista de _Accession Numbers_ (ANs) copiados para a área de transferência.
-
-1.  Copie os ANs (um por linha) para o Clipboard.
-2.  Execute:
-    ```bash
-    # Tenta HAC -> HBR automaticamente
-    python downloader.py
-    
-    # Força servidor específico
-    python downloader.py HAC
-    ```
-
----
-
-## 📘 Scripts Standalone
-
-O Nox é composto por vários scripts modulares que podem ser executados de forma independente. Abaixo está a documentação completa de cada um.
-
-### 🎯 Pontos de Entrada Principais
+### Execução de Scripts
 
 #### `nox.py` — Interface Gráfica (GUI)
 
-**Descrição**: Ponto de entrada principal com interface gráfica moderna (Flet). Ideal para uso interativo.
+**Descrição**: Ponto de entrada principal com interface gráfica Tkinter.
 
 **Uso Básico**:
 ```bash
-# Modo GUI (padrão - usa cenários do config.ini)
+# Modo GUI (padrão)
 python nox.py
 
-# Modo GUI com cenários específicos
-python nox.py plantao-rx plantao-tc-rm-us
-
-# Modo CLI (sem interface gráfica - usa cenários do config.ini)
+# Modo CLI (sem GUI)
 python nox.py --cli
-
-# Modo CLI com cenários específicos
-python nox.py --cli plantao-rx
-
-# Pular etapa de preparação (login)
-python nox.py --no-prepare
 ```
 
 **Argumentos**:
 - `--gui`, `-g`: Executa com interface gráfica (padrão)
-- `--cli`, `-c`: Executa em modo linha de comando (sem GUI)
+- `--cli`, `-c`: Executa em modo linha de comando
 - `--no-prepare`: Pula etapa de preparação (Playwright/Login)
-- `cenarios`: Lista de cenários para monitorar (ex: `plantao-rx plantao-tc-rm-us`). Se omitido, usa os cenários definidos em `config.ini`
-
-**Quando usar**:
-- ✅ Quando você quer interface visual e controle manual
-- ✅ Para monitorar downloads em tempo real
-- ✅ Para fazer downloads manuais pontuais
-
----
+- `cenarios`: Lista de cenários para monitorar.
 
 #### `loop.py` — Modo Headless/Automação
 
-**Descrição**: Orquestrador principal sem interface gráfica. Ideal para execução em background, servidores ou automação.
+**Descrição**: Orquestrador principal sem interface gráfica. Suporta argumentos com lógica híbrida:
+1.  **Nome Simples** (ex: `MONITOR`): Busca payload em `data/payload_MONITOR.json`.
+2.  **Arquivo JSON** (ex: `queries/meu_teste.json`): Usa o arquivo especificado.
 
-**Uso Básico**:
+**Uso**:
 ```bash
-# Usa cenários do config.ini (converte para queries/*.json automaticamente)
+# Usa cenários do config.ini
 python loop.py
 
-# Com arquivos de consulta específicos (caminhos completos)
-python loop.py queries/plantao-rx.json queries/plantao-tc-rm-us.json
+# Usa um cenário específico (busca payload em data/)
+python loop.py MONITOR
 
-# Pular login (usar sessão existente)
-python loop.py --no-prepare
+# Usa um arquivo de query específico
+python loop.py queries/plantao.json
 ```
 
-**Argumentos**:
-- `cenarios`: Caminhos para arquivos JSON de payload (em `queries/`). Se omitido, usa `config.SCENARIOS` e converte para `queries/<nome>.json`
-- `--no-prepare`: Pula etapa de preparação (login)
+#### `fetcher.py` — Busca de Exames via API
 
-**Como funciona**:
-- Sem argumentos: Lê `scenarios` do `config.ini` e converte cada nome para `queries/<nome>.json`
-- Com argumentos: Usa os caminhos de arquivo fornecidos diretamente
+**Descrição**: Cliente da API Cockpit. Agora utiliza **Rich** para display de progresso.
 
-**Quando usar**:
-- ✅ Para execução em background/servidor
-- ✅ Para automação via cron/systemd
-- ✅ Quando não precisa de interface gráfica
+**Uso**:
+```bash
+# Buscar por cenário pré-definido
+python fetcher.py MONITOR
 
-**Diferença entre `nox.py --cli` e `loop.py`**:
-- `nox.py --cli`: Wrapper que chama `loop.py` internamente
-- `loop.py`: Execução direta do orquestrador
+# Buscar usando arquivo JSON
+python fetcher.py --file queries/plantao.json
 
----
-
-### 🔧 Utilitários
+# Modo Raw (Munin) - Salva JSON completo
+python fetcher.py --raw MONITOR --inicio 2023-01-01 --fim 2023-01-02
+```
 
 #### `downloader.py` — Download Manual
 
-**Descrição**: Motor de download WADO/DICOM. Permite download manual de exames individuais ou em lote.
+**Descrição**: Motor de download com barra de progresso **Rich**.
 
-**Uso Básico**:
+**Uso**:
 ```bash
 # Download único
 python downloader.py HAC 12345678
 
-# Batch com servidor específico (lê ANs do clipboard)
-python downloader.py HAC
-
-# Batch com auto-detect (tenta HAC → HBR)
-python downloader.py
-
-# Desativar barra de progresso
-python downloader.py HAC 12345678 --no-progress
-```
-
-**Argumentos**:
-- `servidor`: Nome do servidor (`HBR` ou `HAC`) - opcional em modo batch
-- `an`: Accession Number - opcional, se omitido lê do clipboard
-- `--no-progress`, `-np`: Desativa barra de progresso
-
-**Modos de Operação**:
-1. **Download Único**: `python downloader.py SERVER AN`
-2. **Batch Servidor Específico**: `python downloader.py SERVER` (lê ANs do clipboard)
-3. **Batch Auto-Detect**: `python downloader.py` (tenta HAC, fallback para HBR)
-
-**Quando usar**:
-- ✅ Para baixar exames específicos manualmente
-- ✅ Para processar lista de ANs em lote
-- ✅ Para testar download de um exame específico
-
----
-
-#### `fetcher.py` — Busca de Exames via API
-
-**Descrição**: Cliente da API Cockpit. Busca exames disponíveis baseado em cenários/filtros.
-
-**Uso Básico**:
-```bash
-# Buscar por cenário pré-definido (regras hardcoded)
-python fetcher.py MONITOR
-
-# Buscar múltiplos cenários pré-definidos
-python fetcher.py MONITOR MONITOR_RX DIA_U
-
-# Buscar usando arquivo de payload JSON personalizado
-python fetcher.py --file queries/plantao-rx.json
-
-# Buscar múltiplos arquivos personalizados
-python fetcher.py --file queries/plantao-rx.json queries/plantao-tc-rm-us.json
-
-# Modo raw (salva JSON completo em data/)
-python fetcher.py --raw MONITOR
-
-# Listar cenários disponíveis no servidor
-python fetcher.py --list
-```
-
-**Argumentos**:
-- `cenarios`: Nomes de cenários pré-definidos (ex: `MONITOR`, `DIA_U`)
-- `--file`, `-f`: Caminho para arquivo(s) JSON de payload
-- `--raw`: Modo raw/Munin (salva JSON completo em `data/`)
-- `--list`, `-l`: Lista cenários disponíveis no servidor
-
-**Cenários Pré-Definidos** (hardcoded no fetcher.py):
-- `MONITOR`: CT/MR/US - Urgente/Internado - Não Assinado
-- `MONITOR_RX`: RX - Urgente/Internado - Não Assinado
-- `DIA_E`: Eletivo (24 horas)
-- `DIA_U`: Urgente (3 horas)
-- `DIAS_I`: Internado (36 horas)
-- `MENSAL`, `SEMANAL`: Períodos mais longos
-
-**Cenários Personalizados** (arquivos em queries/):
-- `plantao-rx`: Plantão de Radiologia (RX - Internado - Não Assinado)
-- `plantao-tc-rm-us`: Plantão de TC/RM/US (Internado - Não Assinado)
-- Você pode criar seus próprios arquivos JSON em `queries/` com filtros customizados
-
-**Quando usar**:
-- ✅ Para testar consultas à API
-- ✅ Para criar novos arquivos de payload
-- ✅ Para debug de filtros e cenários
-
----
-
-#### `query.py` — Consulta de Metadados WADO
-
-**Descrição**: Cliente WADO-Query. Obtém metadados de um exame (StudyUID, SeriesUIDs, SOPInstanceUIDs).
-
-**Uso Básico**:
-```bash
-# Consulta básica
-python query.py HAC 12345678
-
-# Saída JSON limpa (sem logs)
-python query.py HAC 12345678 --json
-
-# Consultar HBR
-python query.py HBR 12345678
-```
-
-**Argumentos**:
-- `servidor`: Nome do servidor (`HBR` ou `HAC`)
-- `an`: Accession Number
-- `--json`: Saída JSON limpa, sem logs (útil para scripts)
-
-**Saída**:
-```json
-{
-  "an": "12345678",
-  "study_uid": "1.2.840...",
-  "total_instances": 150,
-  "series": [
-    {
-      "series_uid": "1.2.840...",
-      "instances": ["1.2.840...", ...]
-    }
-  ]
-}
-```
-
-**Quando usar**:
-- ✅ Para verificar se um exame existe no servidor
-- ✅ Para obter metadados sem baixar as imagens
-- ✅ Para debug de problemas de download
-
----
-
-#### `prepare.py` — Preparação e Login
-
-**Descrição**: Automação Playwright para login no Cockpit e captura de sessão/tokens.
-
-**Uso Básico**:
-```bash
-# Login e preparação padrão
-python prepare.py
-
-# Mapear todos os cenários disponíveis
-python prepare.py --mapear-cenarios
-
-# Listar cenários (alias)
-python prepare.py --list
-```
-
-**Argumentos**:
-- `--mapear-cenarios`: Lista todos os cenários disponíveis na conta
-- `--list`, `-l`: Alias para `--mapear-cenarios`
-
-**Quando usar**:
-- ✅ Para renovar sessão expirada
-- ✅ Para descobrir novos cenários disponíveis
-- ✅ Para debug de problemas de autenticação
-
-**Nota**: Este script é executado automaticamente pelo `loop.py` e `nox.py`, a menos que `--no-prepare` seja usado.
-
----
-
-## 🔄 Fluxo de Uso Recomendado
-
-### Para quem quer GUI:
-```bash
-python nox.py
-```
-- Interface visual completa
-- Controle manual de downloads
-- Monitoramento em tempo real
-
-### Para quem não quer GUI (automação):
-```bash
-python loop.py
-```
-- Execução em background
-- Ideal para servidores
-- Sem dependência de interface gráfica
-
-### Para downloads manuais pontuais:
-```bash
-# Copie os ANs para o clipboard, depois:
+# Batch (lê do clipboard)
 python downloader.py
 ```
 
@@ -528,11 +187,10 @@ python downloader.py
 ## 📋 Requisitos
 
 *   Python 3.9+
-*   Dependências (instale via `pip install -r requirements.txt` com o ambiente virtual ativado):
-    *   `flet`
+*   Dependências (`requirements.txt`):
+    *   `playwright`
     *   `requests`
     *   `pydicom`
-    *   `tqdm`
-    *   `playwright`
+    *   `rich`
 
-Desenvolvido para agilizar o fluxo de trabalho radiológico.
+Desenvolvido para agilizar o fluxo de trabalho radiológico. v2.1.0

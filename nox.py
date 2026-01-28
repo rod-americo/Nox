@@ -1,49 +1,61 @@
-import flet as ft
+import tkinter as tk
+from tkinter import ttk, messagebox
 import sys
 import os
 import threading
 import time
 import subprocess
+import json
+import queue
 from pathlib import Path
+from datetime import datetime
 
 # Módulos locais
 import config
 import loop
 import logger
 import downloader
-import json
-import prepare # Importar prepare para listar cenários
 
 # ============================================================
-# CONSTANTES GUI / TEMA
+# ESTILOS / CONSTANTES
 # ============================================================
-COLOR_PRIMARY = "#00E676"  # Verde Radiante (accents)
+FONT_MONO = ("Courier New", 12)
+FONT_NORMAL = ("Segoe UI", 10) if sys.platform == "win32" else ("Helvetica", 12)
+FONT_BOLD = ("Segoe UI", 10, "bold") if sys.platform == "win32" else ("Helvetica", 12, "bold")
 
-# Configura Cores baseado no config.THEME
-IS_LIGHT = config.THEME == "light"
+# Cores Base (Defaults)
+COLOR_GREEN = "#00e676"
+COLOR_RED = "#ff5252"
+COLOR_GRAY = "#9e9e9e"
+COLOR_WHITE = "#ffffff"
+COLOR_DARK = "#2d2d2d"
 
-if IS_LIGHT:
-    COLOR_BG      = "#ffffff"
-    COLOR_CARD    = "#f0f0f0"
-    COLOR_TEXT    = "#000000"
-    COLOR_SUBTEXT = "#666666"
-    COLOR_DIVIDER = "#e0e0e0"
-    THEME_MODE    = ft.ThemeMode.LIGHT
-else:
-    # Dark (default)
-    COLOR_BG      = "#1a1a1a"
-    COLOR_CARD    = "#2d2d2d"
-    COLOR_TEXT    = "#ffffff"
-    COLOR_SUBTEXT = "#9e9e9e"
-    COLOR_DIVIDER = "#424242"
-    THEME_MODE    = ft.ThemeMode.DARK
+# Paletas
+THEME_DARK = {
+    "bg": "#2d2d2d",
+    "fg": "#ffffff",
+    "card": "#424242",
+    "input_bg": "#505050",
+    "input_fg": "#ffffff",
+    "select_bg": "#00e676",
+    "select_fg": "#000000"
+}
+
+THEME_LIGHT = {
+    "bg": "#f0f0f0",
+    "fg": "#000000",
+    "card": "#ffffff",
+    "input_bg": "#ffffff",
+    "input_fg": "#000000",
+    "select_bg": "#00e676",
+    "select_fg": "#ffffff"
+}
 
 class AppState:
     def __init__(self, scenarios=None, no_prepare=False):
         self.loop_controller = loop.LoopController()
         # Inicializa sem thread rodando, para usuário dar Start
         self.loop_thread = None
-        self.loop_running = False
         self.loop_running = False
         self.scenarios = scenarios or [] # Lista de nomes de arquivo
         self.no_prepare = no_prepare
@@ -56,8 +68,6 @@ class AppState:
             def runner():
                 try:
                     # Coletar caminhos completos dos cenários selecionados (arquivos em queries/)
-                    # self.scenarios contém apenas os NOMES dos arquivos (ex: plantao-rx.json)
-                    # Precisamos conveter para Full Path
                     selected_paths = []
                     queries_dir = Path("queries").resolve()
                     
@@ -107,368 +117,421 @@ class AppState:
             self.loop_controller.resume()
             return "RODANDO"
 
-# ler_resumo_dicom removido (agora via JSON)
-
-# ... (código intermediário omitido, pois é grande, vamos manter foco) ...
-# REFAZENDO AS MUDANÇAS DE MANEIRA MAIS CIRÚRGICA ABAIXO
-
-# ============================================================
-# Layout
-# ============================================================
-
-def main(page: ft.Page, scenarios=None):
-    page.title = "Nox"
-    page.theme_mode = THEME_MODE
-    page.bgcolor = COLOR_BG
-    page.padding = 5
-    
-    # Defaults
-    set_window_prop(page, "width", 340)
-    set_window_prop(page, "height", 600)
-    set_window_prop(page, "resizable", True)
-    set_window_prop(page, "always_on_top", True)  # Mantém janela sempre visível
-    
-    # Permitir fechar naturalmente (trataremos cleanup no on_disconnect)
-    set_window_prop(page, "prevent_close", False)
-
-    state = AppState(scenarios=scenarios)
-
-# ler_resumo_dicom removido (agora via JSON)
-
-def scan_recentes():
-    """
-    Retorna lista de exames baseada nos JSONs de progresso em config.PROGRESS_DIR.
-    Não depende da existência dos arquivos DICOM (suporta modo Transient).
-    """
-    if not config.PROGRESS_DIR.exists():
-        return []
-        
-    results = []
-    # Itera sobre JSONs
-    for p in config.PROGRESS_DIR.glob("*.json"):
-        try:
-            data = json.loads(p.read_text(encoding="utf-8"))
-            
-            an = data.get("an", p.stem)
-            
-            # Tenta pegar metadados do JSON (novas versões) ou fallback
-            nome = data.get("patient_name", "—")
-            desc = data.get("study_desc", "")
-            mod  = data.get("modality", "")
-            
-            # Status e Contagem
-            total = data.get("total", 0)
-            baixadas = data.get("baixadas", 0) # Ou len(historico)
-            status = data.get("status", "desconhecido")
-            
-            # Formatação de visualização 
-            if status == "completo":
-                qtd_str = f"{total} img"
-            elif status == "baixando":
-                qtd_str = f"{baixadas}/{total}"
-            else:
-                qtd_str = f"{status}"
-
-            # Path para Viewer (apenas relevante se Persistent)
-            # Se Transient, open_viewer lidará com isso (geralmente URL scheme)
-            dcm_path = config.RADIANT_DICOM_DIR / an
-            
-            results.append({
-                "an": an, 
-                "nome": nome, 
-                "mod": mod, 
-                "desc": desc, 
-                "qtd": qtd_str, 
-                "path": str(dcm_path),
-                "mtime": p.stat().st_mtime
-            })
-        except Exception:
-            continue
-    
-    # Ordena alfabeticamente pelo Nome do Paciente
-    results.sort(key=lambda x: x["nome"])
-    return results
-
-import json
-import downloader
-import shutil
-
-# Sync removido (agora feito via downloader no modo Transient)
-
+# Arquivo de estado da GUI
 GUI_STATE_FILE = config.DATA_DIR / "gui_config.json"
 
-def get_window_prop(page, prop_name, default=None):
-    # 1. Tenta via page.window (Flet > 0.21)
-    if hasattr(page, "window"):
-        val = getattr(page.window, prop_name, None)
-        if val is not None: return val
+class NoxApp(tk.Tk):
+    def __init__(self, scenarios=None, no_prepare=False):
+        super().__init__()
+        self.title(f"Nox v{config.VERSION}")
         
-    # 2. Tenta via page.window_ (Legacy)
-    legacy = f"window_{prop_name}"
-    if hasattr(page, legacy):
-        val = getattr(page, legacy, None)
-        if val is not None: return val
+        # Estado
+        self.state = AppState(scenarios=scenarios or config.SCENARIOS, no_prepare=no_prepare)
+        self.log_queue = queue.Queue()
+        self.session_downloads = 0
+        self.all_items = []
         
-    # 3. Tenta acesso direto ao atributo se existir (algumas versoes do Flet expõem page.window_top)
-    if hasattr(page, prop_name):
-         val = getattr(page, prop_name, None)
-         if val is not None: return val
-         
-    return default
+        # Tema
+        self.colors = THEME_LIGHT if config.THEME == "light" else THEME_DARK
+        self.apply_theme()
+        
+        # Carrega Geometria ou usa padrão
+        self.load_window_state()
+        self.minsize(400, 500)
+        
+        # Bind Close Event para salvar estado
+        self.protocol("WM_DELETE_WINDOW", self.on_close_window)
 
-def set_window_prop(page, prop_name, value):
-    if value is None: return
-    # Tenta via page.window (Flet > 0.21)
-    if hasattr(page, "window") and hasattr(page.window, prop_name):
-        setattr(page.window, prop_name, value)
-        return
-    # Tenta via page.window_ (Legacy)
-    legacy = f"window_{prop_name}"
-    if hasattr(page, legacy):
-        setattr(page, legacy, value)
+        # Configuração de Logger para Queue
+        logger.set_gui_callback(self.queue_log)
 
-    
-    # Função movida para escopo interno de main para acesso ao logger/debug
-    pass
+        # UI Initialization
+        self.create_widgets()
+        self.load_queries_files() # Popula checkboxes
+        self.refresh_data_loop() # Inicia watcher de arquivos
+        self.process_log_queue() # Inicia update da GUI via logs
 
-def load_window_state(page: ft.Page):
-    if not GUI_STATE_FILE.exists():
-        return
-    try:
-        data = json.loads(GUI_STATE_FILE.read_text(encoding="utf-8"))
-        set_window_prop(page, "width", data.get("width", 340))
-        set_window_prop(page, "height", data.get("height", 600))
-        set_window_prop(page, "top", data.get("top"))
-        set_window_prop(page, "left", data.get("left"))
-    except Exception as e:
-        print(f"ERRO ao carregar estado: {e}")
+    def verbose_log(self, msg):
+        # Helper simples para debug local
+        print(f"[GUI DEBUG] {msg}")
 
-def main(page: ft.Page, scenarios=None, no_prepare=False):
-    page.title = f"Nox v{config.VERSION}"
-    page.theme_mode = THEME_MODE
-    page.bgcolor = COLOR_BG
-    page.padding = 5
-    
-    # Defaults
-    set_window_prop(page, "width", 340)
-    set_window_prop(page, "height", 600)
-    set_window_prop(page, "resizable", True)
-    set_window_prop(page, "always_on_top", True)  # Mantém janela sempre visível
-    
-    # Permitir fechar naturalmente (trataremos cleanup no on_disconnect)
-    set_window_prop(page, "prevent_close", False)
-
-    state = AppState(scenarios=scenarios or config.SCENARIOS, no_prepare=no_prepare)
-    
-    load_window_state(page)
-
-    def window_event(e):
-        # Salva estado em eventos de janela
-        if e.data in ["moved", "resized", "maximize", "restore"]:
-             save_window_state(page)
-
-    page.on_window_event = window_event
-    page.on_resized = lambda e: save_window_state(page)
-
-    # --- ELEMENTOS VISUAIS ---
-
-    # Status Ball
-    status_indicator = ft.Container(
-        width=10, height=10, border_radius=5, bgcolor=ft.Colors.GREY_500,
-        animate=ft.Animation(300, ft.AnimationCurve.EASE_OUT)
-    )
-    status_label = ft.Text("Parado", size=12, color=COLOR_SUBTEXT)
-
-    # Log Line
-    log_line = ft.Text("Aguardando...", size=10, color=COLOR_SUBTEXT, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
-
-    # Log Line (moved up) e gui_log agora definido junto com Session Counter
-    pass
-    # logger.set_gui_callback(gui_log) # já setado acima
-
-    def save_window_state(page: ft.Page):
-        """Salva dimensões da janela. Posição não é suportada pelo Flet em todas plataformas."""
+    def load_window_state(self):
+        default_geo = "450x700"
         try:
-            data = {
-                "width": get_window_prop(page, "width", 340),
-                "height": get_window_prop(page, "height", 600)
-            }
-            GUI_STATE_FILE.write_text(json.dumps(data), encoding="utf-8")
-        except:
-            pass  # Falha silenciosa para não interromper o app
-
-    # Boot Sync (OsiriX) - Removido
-    # threading.Thread(target=sync_to_osirix, args=(gui_log,), daemon=True).start()
-
-    def reset_loop_ui():
-        # Callback para quando o loop morrer (erro ou stop)
-        # Reseta visual para Parado
-        if state.loop_running: 
-            return # Sanity check, mas o finally setou False antes chamar
-
-        status_indicator.bgcolor = ft.Colors.GREY_500
-        status_label.value = "Parado"
-        # Usa bg_st que será definido abaixo, python resolve em runtime
-        try:
-            status_container.bgcolor = bg_st # type: ignore
-        except: pass
-
-        if IS_LIGHT:
-            status_label.color = COLOR_SUBTEXT
-        else:
-            status_label.color = COLOR_SUBTEXT
-        page.update()
-
-    def on_status_click(e):
-        if not state.loop_running:
-            state.start_loop(on_exit_callback=reset_loop_ui)
-            status_indicator.bgcolor = ft.Colors.GREEN_400
-            status_label.value = "Monitorando (Clique para Pausar)"
-            status_container.bgcolor = ft.Colors.GREEN_900 if not IS_LIGHT else ft.Colors.GREEN_100
-            status_label.color = ft.Colors.WHITE
-            if IS_LIGHT: status_label.color = ft.Colors.BLACK
-        else:
-            st = state.toggle_pause_loop()
-            if st == "PAUSADO":
-                status_indicator.bgcolor = ft.Colors.ORANGE_400
-                status_label.value = "Pausado (Clique para Retomar)"
-                status_container.bgcolor = ft.Colors.ORANGE_900 if not IS_LIGHT else ft.Colors.ORANGE_100
-                status_label.color = ft.Colors.WHITE
-                if IS_LIGHT: status_label.color = ft.Colors.BLACK
+            if GUI_STATE_FILE.exists():
+                data = json.loads(GUI_STATE_FILE.read_text(encoding="utf-8"))
+                geo = data.get("geometry", default_geo)
+                self.geometry(geo)
             else:
-                status_indicator.bgcolor = ft.Colors.GREEN_400
-                status_label.value = "Monitorando (Clique para Pausar)"
-                status_container.bgcolor = ft.Colors.GREEN_900 if not IS_LIGHT else ft.Colors.GREEN_100
-                status_label.color = ft.Colors.WHITE
-                if IS_LIGHT: status_label.color = ft.Colors.BLACK
-        page.update()
-
-    # Status Row Interativa
-    bg_st = ft.Colors.GREY_900 if not IS_LIGHT else ft.Colors.GREY_200
-    status_container = ft.Container(
-        content=ft.Row(
-            [status_indicator, status_label], 
-            alignment="center",
-            spacing=7
-        ),
-        padding=7,
-        border_radius=5,
-        bgcolor=bg_st,
-        on_click=on_status_click,
-        animate=ft.Animation(200, ft.AnimationCurve.EASE_OUT)
-    )
-
-    # Manual Download Input
-    
-    # Server Selector (Radio)
-    rg_server = ft.RadioGroup(
-        content=ft.Row([
-            ft.Radio(value="HAC", label="HAC"),
-            ft.Radio(value="HBR", label="HBR"),
-        ]),
-        value="HAC" # Default
-    )
-
-    txt_download = ft.TextField(
-        hint_text="Accession Number", 
-        text_size=12, height=35, content_padding=10,
-        expand=True, border_color=COLOR_DIVIDER,
-        color=COLOR_TEXT
-    )
-    
-    def run_manual_download(server, an):
-        gui_log(time.strftime("%H:%M:%S"), "INFO", f"Iniciando manual: {server} {an}")
-        try:
-            ok = downloader.baixar_an(server, an)
-            if ok:
-                gui_log(time.strftime("%H:%M:%S"), "OK", f"Download concluído: {an}")
-            else:
-                gui_log(time.strftime("%H:%M:%S"), "ERRO", f"Falha download: {an}")
+                self.geometry(default_geo)
         except Exception as e:
-            gui_log(time.strftime("%H:%M:%S"), "ERRO", f"Erro: {e}")
-            
-    def btn_download_click(e):
-        srv = rg_server.value
-        val = txt_download.value.strip()
-        
-        if not val: 
-            return
-        
-        # Validação simples
-        if " " in val:
-             # Usuário pode ter colado algo sujo ou tentado o formato antigo
-            gui_log(time.strftime("%H:%M:%S"), "ERRO", "Digite apenas o AN (Use a seleção acima para o servidor).")
-            return
+            print(f"Erro ao carregar estado da janela: {e}")
+            self.geometry(default_geo)
 
-        txt_download.value = ""
-        page.update()
-        
-        threading.Thread(target=run_manual_download, args=(srv, val)).start()
-
-    row_manual = ft.Row([
-        txt_download,
-        ft.Container(content=rg_server, padding=ft.padding.symmetric(horizontal=5)),
-        ft.IconButton(ft.Icons.DOWNLOAD, icon_size=20, icon_color=COLOR_TEXT, on_click=btn_download_click, tooltip="Baixar Manualmente")
-    ], spacing=2, alignment="center")
-
-    # Lista Scroll
-    list_view = ft.ListView(expand=True, spacing=1, padding=0)
-
-    # Search Filter
-    all_items = []
-
-    def render_list(e=None):
-        term = txt_search.value.lower().strip()
-        filtered = []
-        
-        if not term:
-            filtered = all_items
-        else:
-            for i in all_items:
-                # Busca em AN, Nome, Descrição e Modality
-                combo = f"{i['an']} {i['nome']} {i['desc']} {i['mod']}".lower()
-                if term in combo:
-                    filtered.append(i)
-
-        list_view.controls.clear()
-        
-        if not filtered:
-            msg = "Nenhum exame encontrado" if not term else "Nenhum resultado para a busca"
-            list_view.controls.append(ft.Text(msg, size=12, italic=True, color=COLOR_SUBTEXT))
-        else:
-            for i in filtered:
-                container = ft.Container(
-                    content=ft.Row([
-                        ft.Text(i["an"], weight="bold", size=13, color=COLOR_PRIMARY, font_family="Courier New"),
-                        ft.Text(f"{i['nome']} .:. {i['mod']} .:. {i['desc']}", size=12, color=COLOR_TEXT, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS, expand=True),
-                        ft.Text(f"{i['qtd']}", size=11, color=COLOR_SUBTEXT),
-                    ], spacing=10),
-                    padding=ft.padding.symmetric(horizontal=8, vertical=6),
-                    bgcolor=COLOR_CARD,
-                    border_radius=4,
-                    on_click=lambda e, p=i["path"], a=i["an"]: open_viewer(p, a)
-                )
-                list_view.controls.append(container)
-        
+    def save_window_state(self):
         try:
-            page.update()
+            data = {"geometry": self.geometry()}
+            GUI_STATE_FILE.write_text(json.dumps(data), encoding="utf-8")
+        except Exception as e:
+            print(f"Erro ao salvar estado da janela: {e}")
+
+    def on_close_window(self):
+        self.save_window_state()
+        self.destroy()
+
+    def apply_theme(self):
+        self.configure(bg=self.colors["bg"])
+        
+        style = ttk.Style(self)
+        style.theme_use("default") # Base mais limpa para customizar
+        
+        # Frame
+        style.configure("TFrame", background=self.colors["bg"])
+        style.configure("TLabelframe", background=self.colors["bg"], foreground=self.colors["fg"])
+        style.configure("TLabelframe.Label", background=self.colors["bg"], foreground=self.colors["fg"])
+        
+        # Label
+        style.configure("TLabel", background=self.colors["bg"], foreground=self.colors["fg"])
+        
+        # Button
+        style.configure("TButton", background=self.colors["card"], foreground=self.colors["fg"])
+        style.map("TButton", 
+            background=[("active", self.colors["select_bg"])],
+            foreground=[("active", self.colors["select_fg"])]
+        )
+        
+        # Entry
+        style.configure("TEntry", fieldbackground=self.colors["input_bg"], foreground=self.colors["input_fg"])
+        
+        # Checkbox/Radio
+        style.configure("TCheckbutton", background=self.colors["bg"], foreground=self.colors["fg"])
+        style.configure("TRadiobutton", background=self.colors["bg"], foreground=self.colors["fg"])
+        
+        # Treeview
+        style.configure("Treeview", 
+            background=self.colors["card"], 
+            foreground=self.colors["fg"],
+            fieldbackground=self.colors["card"]
+        )
+        style.map("Treeview", background=[('selected', self.colors["select_bg"])])
+        
+        style.configure("Treeview.Heading", background=self.colors["input_bg"], foreground=self.colors["fg"])
+
+    def verbose_log(self, msg):
+        # Helper simples para debug local
+        print(f"[GUI DEBUG] {msg}")
+
+    def queue_log(self, ts, tipo, msg):
+        self.log_queue.put((ts, tipo, msg))
+
+    def process_log_queue(self):
+        try:
+            while True:
+                ts, tipo, msg = self.log_queue.get_nowait()
+                
+                # Atualiza Log Line
+                self.lbl_log.config(text=f"[{ts}] {msg}", fg=self.get_log_color(tipo))
+                
+                # Conta downloads
+                if tipo == "FINALIZADO" and "completo" in msg:
+                    self.session_downloads += 1
+                    self.lbl_session.config(text=f"Sessão: {self.session_downloads}")
+                
+        except queue.Empty:
+            pass
+        finally:
+            self.after(100, self.process_log_queue)
+
+    def get_log_color(self, tipo):
+        if tipo == "ERRO": return COLOR_RED
+        if tipo == "FINALIZADO": return "#00b0ff" if config.THEME == "light" else "#40c4ff"
+        if tipo == "OK": return COLOR_GREEN
+        return self.colors["fg"]
+
+    def create_widgets(self):
+        # --- Header (Status) ---
+        frame_header = ttk.Frame(self, padding=10)
+        frame_header.pack(fill=tk.X)
+
+        self.btn_status = tk.Button(
+            frame_header, 
+            text="PARADO (Clique para Iniciar)", 
+            bg="#757575", fg="#ffffff", # Cinza fixo para parado
+            font=FONT_BOLD,
+            command=self.toggle_status,
+            relief=tk.FLAT,
+            height=2
+        )
+        self.btn_status.pack(fill=tk.X)
+
+        # --- Scenarios (Collapsible ish - Simplificado para lista fixa com scroll se precisar) ---
+        frame_scenarios = ttk.LabelFrame(self, text="Cenários", padding=5)
+        frame_scenarios.pack(fill=tk.X, padx=10, pady=5)
+
+        self.scenario_vars = {} # name -> BooleanVar
+        self.frame_checks = ttk.Frame(frame_scenarios)
+        self.frame_checks.pack(fill=tk.X)
+
+        # Botão de Atualizar removido conforme solicitação
+
+        # --- Manual Download ---
+        frame_manual = ttk.Frame(self, padding=10)
+        frame_manual.pack(fill=tk.X)
+        
+        lbl_manual = ttk.Label(frame_manual, text="Download Manual:")
+        lbl_manual.pack(side=tk.LEFT)
+
+        self.var_server = tk.StringVar(value="HAC")
+        rb_hac = ttk.Radiobutton(frame_manual, text="HAC", variable=self.var_server, value="HAC")
+        rb_hac.pack(side=tk.LEFT, padx=5)
+        rb_hbr = ttk.Radiobutton(frame_manual, text="HBR", variable=self.var_server, value="HBR")
+        rb_hbr.pack(side=tk.LEFT, padx=5)
+
+        self.entry_an = ttk.Entry(frame_manual, width=15)
+        self.entry_an.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.entry_an.bind("<Return>", lambda e: self.do_manual_download())
+
+        btn_dl = ttk.Button(frame_manual, text="Baixar", command=self.do_manual_download, width=8)
+        btn_dl.pack(side=tk.LEFT)
+
+        # --- Search ---
+        frame_search = ttk.Frame(self, padding=(10, 0))
+        frame_search.pack(fill=tk.X)
+        self.entry_search = ttk.Entry(frame_search)
+        self.entry_search.pack(fill=tk.X)
+        self.entry_search.insert(0, "")
+        self.entry_search.bind("<KeyRelease>", self.filter_list)
+        # Label removido conforme solicitação
+
+        # --- List View ---
+        frame_list = ttk.Frame(self, padding=10)
+        frame_list.pack(fill=tk.BOTH, expand=True)
+
+        cols = ("AN", "Nome", "Status")
+        self.tree = ttk.Treeview(frame_list, columns=cols, show="headings", selectmode="browse")
+        self.tree.heading("AN", text="AN")
+        self.tree.heading("Nome", text="Exame")
+        self.tree.heading("Status", text="Status")
+        
+        self.tree.column("AN", width=80, anchor="center")
+        self.tree.column("Nome", width=250)
+        self.tree.column("Status", width=80, anchor="center")
+
+        scrollbar = ttk.Scrollbar(frame_list, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscroll=scrollbar.set)
+        
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.tree.bind("<Double-1>", self.on_item_double_click)
+
+        # --- Footer ---
+        frame_footer = ttk.Frame(self, padding=10)
+        frame_footer.pack(fill=tk.X, side=tk.BOTTOM)
+
+        # Config / Slider
+        frame_cfg = ttk.Frame(frame_footer)
+        frame_cfg.pack(fill=tk.X, pady=5)
+        
+        self.lbl_session = ttk.Label(frame_cfg, text="Sessão: 0", font=FONT_BOLD)
+        self.lbl_session.pack(side=tk.LEFT)
+
+        slider_limit = max(config.SLIDER_MAX, config.MAX_EXAMES)
+        self.scale_max = tk.Scale(
+            frame_cfg, from_=5, to=slider_limit, 
+            orient=tk.HORIZONTAL, showvalue=0, command=self.on_slider_change,
+            bg=self.colors["bg"], fg=self.colors["fg"], highlightthickness=0
+        )
+        self.scale_max.set(config.MAX_EXAMES)
+        self.scale_max.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=10)
+
+        self.lbl_max = ttk.Label(frame_cfg, text=f"Manter: {config.MAX_EXAMES}")
+        self.lbl_max.pack(side=tk.RIGHT)
+
+        # Log Line
+        self.lbl_log = tk.Label(frame_footer, text="Aguardando...", fg=self.colors["fg"], bg=self.colors["bg"], anchor="w")
+        self.lbl_log.pack(fill=tk.X)
+
+
+    def load_queries_files(self):
+        # Limpa widgets anteriores
+        for widget in self.frame_checks.winfo_children():
+            widget.destroy()
+        
+        q_dir = Path("queries")
+        if not q_dir.exists():
+            q_dir.mkdir(parents=True, exist_ok=True)
+            
+        files = sorted([f.stem for f in q_dir.glob("*.json")])
+        
+        # Atualiza self.scenario_vars preservando estados se possível? Não, recriando é mais seguro por enquanto.
+        self.scenario_vars = {}
+        
+        # Lista dos que devem estar marcados
+        current_active = self.state.scenarios
+
+        for f in files:
+            var = tk.BooleanVar(value=(f in current_active))
+            chk = ttk.Checkbutton(self.frame_checks, text=f, variable=var, command=lambda name=f, v=var: self.on_scenario_toggle(name, v))
+            chk.pack(anchor="w", padx=10)
+            self.scenario_vars[f] = var
+
+    def on_scenario_toggle(self, name, var):
+        if var.get():
+            if name not in self.state.scenarios:
+                self.state.scenarios.append(name)
+        else:
+            if name in self.state.scenarios:
+                self.state.scenarios.remove(name)
+        
+        # Salva config
+        self.save_config_value("SETTINGS", "scenarios", json.dumps(self.state.scenarios))
+        logger.log_info(f"Cenários ativos: {self.state.scenarios}")
+
+    def toggle_status(self):
+        if not self.state.loop_running:
+            # START
+            self.state.start_loop(on_exit_callback=self.on_loop_exit)
+            self.update_status_ui("RODANDO")
+        else:
+            # PAUSE / RESUME logic
+            st = self.state.toggle_pause_loop()
+            self.update_status_ui(st)
+
+    def update_status_ui(self, status):
+        if status == "RODANDO":
+            self.btn_status.config(text="MONITORANDO (Clique para Pausar)", bg=COLOR_GREEN, fg=COLOR_DARK)
+        elif status == "PAUSADO":
+            self.btn_status.config(text="PAUSADO (Clique para Retomar)", bg="orange", fg=COLOR_WHITE)
+        else: # Parado
+            self.btn_status.config(text="PARADO (Clique para Iniciar)", bg=COLOR_GRAY, fg=COLOR_WHITE)
+
+    def on_loop_exit(self):
+        # Chamado via thread, usar after para mexer na UI
+        self.after(0, lambda: self.update_status_ui("PARADO"))
+
+    def do_manual_download(self):
+        an = self.entry_an.get().strip()
+        server = self.var_server.get()
+        if not an: return
+        
+        self.entry_an.delete(0, tk.END)
+        logger.log_info(f"Iniciando manual: {server} {an}")
+        
+        def run():
+            if downloader.baixar_an(server, an):
+                logger.log_ok(f"Download concluído: {an}")
+            else:
+                logger.log_erro(f"Falha download: {an}")
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def filter_list(self, event=None):
+        term = self.entry_search.get().lower().strip()
+        
+        # Limpa treeview
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+            
+        for i in self.all_items:
+            # Busca em AN, Nome, Desc, Modality
+            combo = f"{i.get('an','')} {i.get('nome','')} {i.get('desc','')} {i.get('mod','')}".lower()
+            if not term or term in combo:
+                values = (i.get("an"), f"{i.get('nome')} - {i.get('desc')}", i.get("qtd"))
+                # Armazena path no item tags ou ID se precisar, vamos usar o ID como indice ou algo assim
+                # O ID da row será o PATH do dicom para recuperar no double click
+                self.tree.insert("", tk.END, iid=i["path"], values=values)
+
+    def refresh_data_loop(self):
+        try:
+            new_items = self.scan_recentes()
+            # Diferença básica para não piscar tela toda hora? 
+            # Por enquanto, redraw bruto pois scan_recentes lê disco.
+            self.all_items = new_items
+            self.filter_list()
+        except Exception as e:
+            print(f"Erro refresh: {e}")
+        finally:
+            self.after(5000, self.refresh_data_loop) # 5 segundos
+
+    def scan_recentes(self):
+        if not config.PROGRESS_DIR.exists(): return []
+        results = []
+        for p in config.PROGRESS_DIR.glob("*.json"):
+            try:
+                data = json.loads(p.read_text(encoding="utf-8"))
+                an = data.get("an", p.stem)
+                nome = data.get("patient_name", "—")
+                desc = data.get("study_desc", "")
+                mod  = data.get("modality", "")
+                total = data.get("total", 0)
+                baixadas = data.get("baixadas", 0)
+                status = data.get("status", "desconhecido")
+                
+                if status == "completo": qtd_str = f"{total} img"
+                elif status == "baixando": qtd_str = f"{baixadas}/{total}"
+                else: qtd_str = status
+                
+                dcm_path = config.RADIANT_DICOM_DIR / an
+                
+                results.append({
+                    "an": an, "nome": nome, "mod": mod, 
+                    "desc": desc, "qtd": qtd_str, 
+                    "path": str(dcm_path),
+                    "mtime": p.stat().st_mtime
+                })
+            except: continue
+        results.sort(key=lambda x: x["nome"])
+        return results
+
+    def on_item_double_click(self, event):
+        selected_id = self.tree.focus() # Retorna o IID que setamos como Path
+        if selected_id:
+            path = selected_id
+            # Recupera AN dos values
+            item = self.tree.item(selected_id)
+            an = item['values'][0]
+            self.open_viewer(path, an)
+
+    def open_viewer(self, path, an):
+        viewer_type = config.VIEWER
+        if viewer_type in ["osirix", "horos"]:
+            url = f"osirix://?methodName=displayStudy&AccessionNumber={an}"
+            self.open_folder(url)
+            logger.log_info(f"OsiriX chamado: {an}")
+        else:
+            radiant_exe = Path(config.RADIANT_EXE)
+            if radiant_exe.exists():
+                cmd = [str(radiant_exe), "-cl", "-d", str(path)]
+                try:
+                    subprocess.Popen(cmd)
+                    logger.log_info(f"RadiAnt aberto: {an}")
+                except Exception as e:
+                    logger.log_erro(f"Erro RadiAnt: {e}")
+            else:
+                self.open_folder(path)
+                logger.log_aviso("Viewer não encontrado. Abrindo pasta.")
+
+    def open_folder(self, path):
+        if sys.platform == "win32": os.startfile(path)
+        elif sys.platform == "darwin": subprocess.Popen(["open", path])
+        else: subprocess.Popen(["xdg-open", path])
+
+    def on_slider_change(self, value):
+        val = int(float(value))
+        self.lbl_max.config(text=f"Manter: {val}")
+        config.MAX_EXAMES = val
+        self.save_config_value("SETTINGS", "max_exames", val)
+        # Trigger cleanup
+        threading.Thread(target=self.trigger_cleanup, daemon=True).start()
+
+    def trigger_cleanup(self):
+        try:
+            loop.verificar_retencao_exames()
+            # O refresh loop vai pegar as mudanças na próxima iteração
         except: pass
 
-    txt_search = ft.TextField(
-        hint_text="Buscar exames...", 
-        text_size=12, height=35, content_padding=10, 
-        prefix_icon=ft.Icons.SEARCH,
-        border_color=COLOR_DIVIDER,
-        color=COLOR_TEXT,
-        on_change=render_list
-    )
-
-    # --- Session Counter ---
-    session_downloads = 0
-    lbl_session = ft.Text("Sessão: 0", size=12, color=COLOR_PRIMARY, weight="bold")
-
-    # --- Config Writer Helper ---
-    def save_config_value(section, key, value):
+    def save_config_value(self, section, key, value):
         import configparser
         parser = configparser.ConfigParser()
         parser.read(config.CONFIG_FILE)
@@ -477,221 +540,6 @@ def main(page: ft.Page, scenarios=None, no_prepare=False):
         parser.set(section, key, str(value))
         with open(config.CONFIG_FILE, 'w') as f:
             parser.write(f)
-            
-    # --- Max Exames Slider ---
-    def on_max_change(e):
-        val = int(e.control.value)
-        lbl_max.value = f"Manter: {val}"
-        
-        # Atualiza runtime e arquivo
-        config.MAX_EXAMES = val
-        save_config_value("SETTINGS", "max_exames", val)
-        
-        # Dispara limpeza imediata sem bloquear UI
-        try:
-            loop.verificar_retencao_exames()
-            refresh_data()
-        except: pass
-        
-        page.update()
-
-    # Log Line
-    log_line = ft.Text("Aguardando...", size=10, color=COLOR_SUBTEXT, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS)
-
-    def gui_log(ts, tipo, msg):
-        try:
-            log_line.value = f"[{ts}] {msg}"
-            # FINALIZADO usa ciano, OK verde, ERRO vermelho
-            if tipo == "ERRO":
-                log_line.color = ft.Colors.RED_400
-            elif tipo == "FINALIZADO":
-                 log_line.color = ft.Colors.CYAN_400
-            else:
-                log_line.color = COLOR_SUBTEXT
-            
-            # Hook para contar downloads (FINALIZADO = completo)
-            if tipo == "FINALIZADO" and "completo" in msg:
-                 nonlocal session_downloads
-                 session_downloads += 1
-                 lbl_session.value = f"Sessão: {session_downloads}"
-                 lbl_session.update()
-
-            page.update()
-        except:
-            pass  # Ignora erros durante shutdown
-
-    logger.set_gui_callback(gui_log)
-
-    # Slider Max dinâmico
-    # Garante que o limite do slider seja pelo menos igual ao valor atual, caso configurado errado
-    slider_limit = max(config.SLIDER_MAX, config.MAX_EXAMES)
-    
-    slider_max = ft.Slider(
-        min=5, max=slider_limit, divisions=slider_limit-5, 
-        value=config.MAX_EXAMES, 
-        label="{value}", 
-        on_change_end=on_max_change,
-        expand=True
-    )
-    lbl_max = ft.Text(f"Manter: {config.MAX_EXAMES}", size=12, color=COLOR_SUBTEXT)
-
-    # Layout compacto: [Sessão: X] [Slider] [Manter: Y]
-    row_config = ft.Row([
-        lbl_session,
-        slider_max,
-        lbl_max
-    ], alignment="center", spacing=10)
-
-    # Manual Download Input
-
-    def open_viewer(path, an):
-        viewer_type = config.VIEWER
-        
-        if viewer_type in ["osirix", "horos"]:
-            # Abre via URL Scheme do OsiriX/Horos
-            url = f"osirix://?methodName=displayStudy&AccessionNumber={an}"
-            try:
-                open_folder(url) # Reusa a função open_folder que já trata startfile/open/xdg-open
-                gui_log(time.strftime("%H:%M:%S"), "INFO", f"OsiriX chamado: {an}")
-            except Exception as e:
-                gui_log(time.strftime("%H:%M:%S"), "ERRO", f"Erro OsiriX: {e}")
-        else:
-            # Default: RadiAnt
-            radiant_exe = Path(config.RADIANT_EXE)
-            if radiant_exe.exists():
-                cmd = [str(radiant_exe), "-cl", "-d", str(path)]
-                try:
-                    subprocess.Popen(cmd)
-                    gui_log(time.strftime("%H:%M:%S"), "INFO", f"RadiAnt aberto: {an}")
-                except Exception as e:
-                    gui_log(time.strftime("%H:%M:%S"), "ERRO", f"Erro RadiAnt: {e}")
-            else:
-                # Fallback
-                open_folder(path)
-                gui_log(time.strftime("%H:%M:%S"), "AVISO", "Viewer não encontrado. Abrindo pasta.")
-
-    def open_folder(path):
-        import subprocess
-        # Se for URL (osirix://), o 'open' ou 'startfile' deve lidar
-        if sys.platform == "win32":
-            os.startfile(path)
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", path])
-        else:
-            subprocess.Popen(["xdg-open", path])
-
-    def refresh_data():
-        nonlocal all_items
-        all_items = scan_recentes()
-        render_list()
-
-    # Lista atual de cenários selecionados (começa com o do config/args)
-    selected_scenarios = list(state.scenarios)
-
-    def on_scenario_check(e):
-        val = e.control.label
-        if e.control.value:
-            if val not in selected_scenarios:
-                selected_scenarios.append(val)
-        else:
-            if val in selected_scenarios:
-                selected_scenarios.remove(val)
-        
-        # Atualiza state
-        state.scenarios = selected_scenarios
-        # Persistir no INI (nomes sem extensão, conforme exibido)
-        save_config_value("SETTINGS", "scenarios", json.dumps(selected_scenarios))
-        
-        gui_log(time.strftime("%H:%M:%S"), "INFO", f"Ativos: {', '.join(selected_scenarios)}")
-        gui_log(time.strftime("%H:%M:%S"), "INFO", "Reinicie o monitor para aplicar.")
-
-    scenario_column = ft.Column(scroll=ft.ScrollMode.AUTO)
-
-    def load_queries_files():
-        """Lê arquivos .json da pasta queries/ e popula checkboxes."""
-        q_dir = Path("queries")
-        if not q_dir.exists():
-             q_dir.mkdir(parents=True, exist_ok=True)
-             
-        # Lista arquivos mas exibe sem extensão .json
-        files = sorted([f.stem for f in q_dir.glob("*.json")])
-        
-        scenario_column.controls.clear()
-        
-        if not files:
-            scenario_column.controls.append(ft.Text("Nenhum arquivo em queries/", size=12, italic=True))
-        
-        for f in files:
-            # Se foi passado via CLI ou salvo no config, já vem checked
-            is_checked = f in selected_scenarios
-            scenario_column.controls.append(
-                ft.Checkbox(label=f, value=is_checked, on_change=on_scenario_check)
-            )
-        page.update()
-
-    # Botão de Atualizar Lista (apenas recarrega pasta queries)
-    btn_refresh_scenarios = ft.ElevatedButton(
-        "Atualizar Lista", 
-        icon=ft.Icons.REFRESH, 
-        height=30, 
-        style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=5)),
-        on_click=lambda e: load_queries_files()
-    )
-
-    scenario_expander = ft.ExpansionTile(
-        title=ft.Text("Consultas", size=13, weight="bold"),
-        subtitle=ft.Text("Selecione as consultas", size=11, color=COLOR_SUBTEXT),
-        controls=[
-            ft.Container(
-                content=ft.Column([
-                    ft.Container(content=scenario_column, height=150),
-                    ft.Divider(height=1),
-                    btn_refresh_scenarios
-                ], spacing=5),
-                padding=10
-            )
-        ],
-        initially_expanded=False,
-        collapsed_text_color=COLOR_TEXT,
-        text_color=COLOR_PRIMARY
-    )
-    
-    # Carga inicial
-    load_queries_files()
-
-    # Layout Montagem
-    page.add(
-        ft.Row([ft.Text(config.TITLE, weight="bold", size=14, color=COLOR_TEXT)], alignment="center"),
-        status_container,
-        ft.Divider(color=COLOR_DIVIDER, height=1),
-        scenario_expander, # Adicionado aqui
-        ft.Divider(color=COLOR_DIVIDER, height=1),
-        row_manual,
-        ft.Divider(color=COLOR_DIVIDER, height=1),
-        txt_search,
-        list_view, 
-        ft.Divider(color=COLOR_DIVIDER, height=1),
-        ft.Container(content=row_config, padding=ft.padding.symmetric(horizontal=10)),
-        ft.Container(content=log_line, padding=ft.padding.only(bottom=5))
-    )
-    
-    # Limpeza inicial ao abrir a GUI para refletir MAX_EXAMES
-    try:
-        loop.verificar_retencao_exames()
-    except Exception as e:
-        print(f"Erro ao verificar retenção na inicialização: {e}")
-
-    # Watcher Thread (Check files every 5s) - SIMPLIFICADO
-    def watcher():
-        while True:
-            time.sleep(5)
-            try:
-                refresh_data()
-            except: 
-                pass  # Ignora erros durante shutdown
-    
-    threading.Thread(target=watcher, daemon=True).start()
-    refresh_data()
 
 if __name__ == "__main__":
     import argparse
@@ -704,37 +552,24 @@ if __name__ == "__main__":
     
     # Opções globais
     parser.add_argument("--no-prepare", action="store_true", help="Pular etapa de preparação (Playwright/Login)")
-    
-    # Cenários opcionais
     parser.add_argument("cenarios", metavar="CENARIOS", nargs="*", help="Cenários específicos (ex: MONITOR MONITOR_RX)")
     
     args = parser.parse_args()
     
     cenarios = args.cenarios if args.cenarios else None
 
-    # CLI Mode
     if args.cli:
         print("--- INICIANDO O NOX (CLI) ---")
         try:
-            # Reconstrói args para o loop.main
             loop_args = []
             if cenarios: loop_args.extend(cenarios)
             if args.no_prepare: loop_args.append("--no-prepare")
-            
             loop.main(args=loop_args)
         except KeyboardInterrupt:
             print("\nInterrompido pelo usuário.")
             sys.exit(0)
-            
-    # GUI Mode (Default)
     else:
-        print("--- INICIANDO O NOX (GUI) ---")
-        if args.no_prepare: print("Opção: --no-prepare ativada")
-        if cenarios: print(f"Cenários: {cenarios}")
-
-        try:
-            # Lambda para injetar argumentos no main da GUI
-            ft.app(target=lambda page: main(page, scenarios=cenarios, no_prepare=args.no_prepare))
-        except Exception as e:
-            print(f"ERRO FATAL: {e}")
-            input("Pressione ENTER para sair...")
+        # GUI Mode
+        print("--- INICIANDO O NOX (TKINTER GUI) ---")
+        app = NoxApp(scenarios=cenarios, no_prepare=args.no_prepare)
+        app.mainloop()

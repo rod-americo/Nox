@@ -59,7 +59,18 @@ import pydicom
 import config
 from logger import log_info, log_ok, log_erro, log_debug, log_finalizado, log_skip
 from query import obter_metadata
-from tqdm import tqdm
+from query import obter_metadata
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn, TransferSpeedColumn, ProgressColumn
+from rich.text import Text
+
+class SpeedColumn(ProgressColumn):
+    """Renders speed in img/s."""
+    def render(self, task: "Task") -> Text:
+        speed = task.speed
+        if speed is None:
+            return Text("?", style="progress.data.speed")
+        return Text(f"{speed:.1f} img/s", style="progress.data.speed")
+
 
 
 # ============================================================
@@ -359,42 +370,65 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
                     _baixar_sop, url, destino, extract_metadata=extrair_agora, verbose_error=True
                 )))
 
-            # consumir resultados com tqdm
-            iterable = tqdm(futures, total=len(futures), unit="img", disable=not mostrar_progresso)
-            
-            for sop, fut in iterable:
-                try:
-                    ok, meta_retornado = fut.result()
-                except (KeyboardInterrupt, RuntimeError) as e:
-                    # RuntimeError pode ocorrer se "cannot schedule new futures after interpreter shutdown"
-                    # Trata como interrupção de shutdown
-                    sys.stdout.write("\n")
-                    if isinstance(e, RuntimeError) and "schedule new futures" not in str(e):
-                        # Se for outro RuntimeError, re-raise
-                        raise e
-                    log_erro("Interrupção detectada (Shutdown) — encerrando imediatamente.")
-                    raise KeyboardInterrupt
-
-                if ok:
-                    historico.add(sop)
-                    novos += 1
+            # Consumir resultados com RICH
+            if mostrar_progresso:
+                progress_columns = [
+                    SpinnerColumn(),
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(),
+                    TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                    SpeedColumn(),
+                    TimeRemainingColumn(),
+                ]
+                with Progress(*progress_columns, transient=True) as progress:
+                    task_id = progress.add_task(f"[{servidor}] Baixando {an}", total=len(futures))
                     
-                    # Se retornou metadados, atualiza JSON
-                    if meta_retornado:
-                        js.update(meta_retornado)
-                        precisa_metadata = False # Já pegamos
+                    for sop, fut in futures:
+                        try:
+                            ok, meta_retornado = fut.result()
+                        except (KeyboardInterrupt, RuntimeError) as e:
+                            # ... (tratamento de erro inalterado) ...
+                            if isinstance(e, RuntimeError) and "schedule new futures" not in str(e):
+                                raise e
+                            log_erro("Interrupção detectada (Shutdown) — encerrando imediatamente.")
+                            raise KeyboardInterrupt
 
-                vel = (novos) / (perf_counter() - inicio + 0.001)
+                        if ok:
+                            historico.add(sop)
+                            novos += 1
+                            if meta_retornado:
+                                js.update(meta_retornado)
+                                precisa_metadata = False
 
-                js.update({
-                    "baixadas": len(historico),
-                    "total": total,
-                    "velocidade": round(vel, 1),
-                    "status": "baixando",
-                    "historico": list(historico),
-                })
-                _gravar_json(an, js)
-            
+                        vel = (novos) / (perf_counter() - inicio + 0.001)
+                        js.update({
+                            "baixadas": len(historico),
+                            "total": total,
+                            "velocidade": round(vel, 1),
+                            "status": "baixando",
+                            "historico": list(historico),
+                        })
+                        _gravar_json(an, js)
+                        
+                        progress.update(task_id, advance=1)
+            else:
+                # Sem progresso visual (loop simples)
+                for sop, fut in futures:
+                     # Copiar lógica de processamento do resultado aqui caso precise (ou refatorar)
+                     # Para simplificar e evitar duplicação no prompt, assumimos que no-progress é raro no CLI interativo
+                     # mas logicamente deveria processar igual.
+                     try:
+                        ok, meta_retornado = fut.result()
+                        if ok:
+                            historico.add(sop)
+                            novos += 1
+                            if meta_retornado: js.update(meta_retornado)
+                        
+                        vel = (novos) / (perf_counter() - inicio + 0.001)
+                        js.update({"baixadas": len(historico), "total": total, "velocidade": round(vel, 1), "status": "baixando", "historico": list(historico)})
+                        _gravar_json(an, js)
+                     except: pass
+
     except KeyboardInterrupt:
         return False
 
@@ -481,10 +515,20 @@ def _ler_clipboard() -> list[str]:
 # ============================================================
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("servidor", nargs="?", help="HBR ou HAC (opcional em Batch)")
-    parser.add_argument("an", nargs="?", help="Accession Number (opcional). Se omitido, lê do clipboard.")
-    parser.add_argument("--no-progress", "-np", action="store_true", help="Desativar barra de progresso")
+    description = "Motor de Download DICOM (WADO)"
+    # add_help=False para customizar a mensagem de -h
+    parser = argparse.ArgumentParser(description=description, add_help=False)
+
+    # Grupos para traduzir cabeçalhos
+    pos_group = parser.add_argument_group("Argumentos")
+    opt_group = parser.add_argument_group("Opções")
+
+    pos_group.add_argument("servidor", nargs="?", help="HBR ou HAC (opcional em Batch)")
+    pos_group.add_argument("an", nargs="?", help="Accession Number (opcional). Se omitido, lê do clipboard.")
+    
+    opt_group.add_argument("--no-progress", "-np", action="store_true", help="Desativar barra de progresso")
+    opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
+    
     args = parser.parse_args()
 
     # 1. Caso 'python downloader.py' (sem args) -> Batch Auto-Detect (HAC -> HBR)

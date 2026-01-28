@@ -161,9 +161,9 @@ import argparse
 # ============================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="WADO-Query Client")
+    parser = argparse.ArgumentParser(description="Cliente de Consulta WADO (Metadata)")
     parser.add_argument("servidor", help="Nome do servidor (HBR, HAC, etc)")
-    parser.add_argument("an", help="Accession Number")
+    parser.add_argument("an", help="Accession Number (Número de Acesso)")
     parser.add_argument("--json", action="store_true", help="Saída JSON limpa (sem logs)")
 
     args = parser.parse_args()
