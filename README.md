@@ -112,6 +112,11 @@ scenarios = ["plantao-rx", "plantao-tc-rm-us"]
     playwright install chromium
     ```
 
+    > **Nota para macOS (Homebrew):** Se encontrar erro de `_tkinter`, instale o suporte gráfico separadamente:
+    > ```bash
+    > brew install python-tk@3.12
+    > ```
+
 ---
 
 ### Execução de Scripts
