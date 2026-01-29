@@ -49,7 +49,7 @@
     },
     "nm_periodo_imagem": {
         "value": "mes",
-        "label": "Há 1 Mês"
+        "label": "H\u00e1 1 M\u00eas"
     },
     "dt_cadastro": {
         "dt_inicio": "",
@@ -144,8 +144,6 @@
             4975,
             8205,
             7092,
-            6649,
-            6648,
             4948
         ],
         "excluindo": false
