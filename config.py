@@ -253,7 +253,10 @@ else:
     # Detecção automática baseada no visualizador configurado
     # OsiriX/Horos: Usa Transient (move para Incoming, não mantém cópia local)
     # RadiAnt: Usa Persistent (mantém arquivos em RADIANT_DICOM_DIR)
-    if VIEWER in ["osirix", "horos"]:
+    if SYSTEM_CONFIG == "linux":
+        # No Linux, sempre usamos Persistent (linux_dicom) para evitar bypass do path configurado
+        STORAGE_MODE = "persistent"
+    elif VIEWER in ["osirix", "horos"]:
         STORAGE_MODE = "transient"
     else:
         STORAGE_MODE = "persistent"

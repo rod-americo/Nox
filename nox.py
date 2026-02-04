@@ -484,7 +484,7 @@ class NoxApp(ctk.CTk):
                 elif status == "baixando": qtd_str = f"{baixadas}/{total}"
                 else: qtd_str = status
                 
-                dcm_path = config.RADIANT_DICOM_DIR / an
+                dcm_path = config.OUTPUT_DICOM_DIR / an
                 
                 results.append({
                     "an": an, "nome": nome, "mod": mod, 
