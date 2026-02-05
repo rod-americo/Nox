@@ -30,6 +30,7 @@ from datetime import datetime, timedelta
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 
 from logger import log_info, log_erro, log_debug, log, log_ok, log_aviso
+import config
 from config import (
     URL_BASE,
     SESSION_FILE,
