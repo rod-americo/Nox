@@ -19,7 +19,7 @@ Cada arquivo JSON representa um objeto de busca. Os campos mais importantes são
 ### Filtros de Procedimento e Exame
 
 Para exames de Raio-X (RX), a prática no projeto é deixar `cd_modalidade` vazio e filtrar por IDs específicos:
-- `id_procedimento`: Exemplos comuns incluem `["96"]`.
+- `id_procedimento`: Exemplos comuns incluem `["96"]` — Precedimento `RAIO X`.
 - `exame.id_exame`: Lista de IDs numéricos (ex: `5742, 4887`).
 
 > [!NOTE]

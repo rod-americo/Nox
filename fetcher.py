@@ -34,6 +34,7 @@ from config import (
     URL_BASE,
     SESSION_FILE,
     DATA_DIR,
+    SYSTEM_CONFIG,
 )
 
 # Silenciar aviso de InsecureRequestWarning (SSL verify=False)
@@ -420,6 +421,12 @@ def extrair_an_servidor(registro):
     an = str(registro.get("cd_item_pedido_his") or "").strip()
     if not an:
         return None, None
+    
+    # Adição de id_exame_pedido para o nome da pasta (específico para Linux)
+    id_exame = str(registro.get("id_exame_pedido") or "").strip()
+    if SYSTEM_CONFIG == "linux" and id_exame:
+        an = f"{an}_{id_exame}"
+
     unidade = (registro.get("nm_unidade") or "").upper().strip()
     if unidade == "HAC":
         return an, "HAC"

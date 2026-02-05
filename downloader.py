@@ -249,8 +249,11 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
     # ------------------------------------------------------------
     # 1. Consulta WADO (XML) - Source of Truth
     # ------------------------------------------------------------
+    # Se o 'an' for composto (ex: AN_ID), extraímos apenas o AN para a query WADO
+    pure_an = an.split("_")[0] if "_" in an else an
+
     try:
-        meta = obter_metadata(an, servidor)
+        meta = obter_metadata(pure_an, servidor)
     except requests.exceptions.ConnectionError:
         log_erro(f"[{servidor}] {an}: Servidor indisponível (Connection Refused).")
         return False
