@@ -4,6 +4,7 @@ config.ini
 
 # Dados e Logs
 data/
+!data/extract_unique_metadata.py
 logs/
 downloads/
 temp/
