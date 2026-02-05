@@ -225,6 +225,7 @@ THEME = "light" if _raw_theme == "light" else "dark"
 VIEWER        = get("SETTINGS", "viewer", "radiant").lower()
 _viewer_display = "OsiriX" if VIEWER == "osirix" else "RadiAnt"
 TITLE         = f"Assistente :: {_viewer_display} :: Mezo"
+SAVE_METADATA = get("SETTINGS", "metadado", "false").lower() == "true"
 
 # Criar diretório de saída DICOM (OUTPUT_DICOM_DIR já foi definido com detecção de SO)
 OUTPUT_DICOM_DIR.mkdir(parents=True, exist_ok=True)

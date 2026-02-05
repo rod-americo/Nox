@@ -240,6 +240,28 @@ def _baixar_sop(url: str, destino: Path, extract_metadata: bool = False, verbose
     return False, None
 
 
+def _salvar_metadata_dicom(dcm_path: Path, output_json: Path):
+    """
+    Lê um arquivo DICOM e exporta seus metadados principais para JSON.
+    Usa representação simplificada (Nome: Valor).
+    """
+    try:
+        import json
+        ds = pydicom.dcmread(str(dcm_path), stop_before_pixels=True)
+        
+        meta = {}
+        # Itera sobre os elementos do dataset (excluindo sequências complexas e binários para brevidade)
+        for elem in ds:
+            if elem.VR in ["OB", "OW", "SQ"]: continue
+            meta[elem.name] = str(elem.value)
+            
+        output_json.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        return True
+    except Exception as e:
+        log_debug(f"Erro ao exportar metadados DICOM: {e}")
+        return False
+
+
 # ============================================================
 # Baixar um único AN
 # ============================================================
@@ -462,18 +484,41 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
         log_finalizado(f"[{servidor}] AN {an} — completo ({vel_final:.1f} img/s)")
         
         # ------------------------------------------------------------
-        # Cópia do Metadado Cockpit (subjson)
+        # Entrega de Metadados (Cockpit e DICOM)
         # ------------------------------------------------------------
+        # 1. Metadado Cockpit (subjson)
         meta_origem = config.COCKPIT_METADATA_DIR / f"{an}.json"
         if meta_origem.exists():
             try:
-                # No Linux/Persistent, salva como metadata_cockpit.json na pasta do exame
+                # Se houver metadado no cache, move para a pasta final (evita duplicata)
                 if config.STORAGE_MODE == "persistent":
-                    shutil.copy2(meta_origem, destino_base / "metadata_cockpit.json")
-                # Se desejar manter no transient também (OsiriX), poderia ser movido para algum lugar…
-                # Por enquanto, mantemos na pasta DICOM (que no persistent é o destino final).
+                    shutil.move(str(meta_origem), str(destino_base / "metadata_cockpit.json"))
             except Exception as e:
-                log_debug(f"Erro ao copiar metadados cockpit para pasta final: {e}")
+                log_debug(f"Erro ao mover metadados cockpit para pasta final: {e}")
+
+        # 2. Metadado DICOM (por série: metadado_{SeriesNumber}_dicom.json)
+        if getattr(config, 'SAVE_METADATA', False):
+            # Agrupa imagens por SeriesInstanceUID e extrai SeriesNumber de cada
+            series_processadas = set()
+            for dcm_file in destino_base.glob("*.dcm"):
+                try:
+                    ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True)
+                    series_uid = str(getattr(ds, "SeriesInstanceUID", ""))
+                    
+                    # Evita processar a mesma série múltiplas vezes
+                    if series_uid in series_processadas:
+                        continue
+                    series_processadas.add(series_uid)
+                    
+                    # Obtém SeriesNumber (tag 0020,0011)
+                    series_number = str(getattr(ds, "SeriesNumber", "unknown"))
+                    
+                    # Salva metadado da série
+                    output_name = f"metadado_{series_number}_dicom.json"
+                    _salvar_metadata_dicom(dcm_file, destino_base / output_name)
+                    
+                except Exception as e:
+                    log_debug(f"Erro ao processar metadados de série: {e}")
 
         return True
 
@@ -545,9 +590,14 @@ def main():
     pos_group.add_argument("an", nargs="?", help="Accession Number (opcional). Se omitido, lê do clipboard.")
     
     opt_group.add_argument("--no-progress", "-np", action="store_true", help="Desativar barra de progresso")
+    opt_group.add_argument("--metadado", action="store_true", help="Salva metadados Cockpit/DICOM")
     opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
     
     args = parser.parse_args()
+
+    # Override config se flag presente
+    if args.metadado:
+        config.SAVE_METADATA = True
 
     # 1. Caso 'python downloader.py' (sem args) -> Batch Auto-Detect (HAC -> HBR)
     if not args.servidor:

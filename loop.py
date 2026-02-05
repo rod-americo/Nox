@@ -269,6 +269,7 @@ def main(**kwargs):
 
     arg_group.add_argument("cenarios", nargs="*", help="Lista de cenários (ex: MONITOR) ou arquivos JSON")
     opt_group.add_argument("--no-prepare", action="store_true", help="Pular etapa de preparação (Login/Sessão)")
+    opt_group.add_argument("--metadado", action="store_true", help="Ativa exportação de metadados Cockpit/DICOM")
     opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
     
     # Se chamado via GUI, args podem vir vazios ou customizados
@@ -276,6 +277,10 @@ def main(**kwargs):
         args = parser.parse_args(kwargs["args"])
     else:
         args = parser.parse_args()
+    
+    # Override config se flag presente
+    if args.metadado:
+        config.SAVE_METADATA = True
     
     # Prioridade: 1. Argumentos CLI, 2. config.SCENARIOS
     if args.cenarios:

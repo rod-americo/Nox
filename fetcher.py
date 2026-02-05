@@ -15,9 +15,9 @@ Este módulo:
     • Em modo padrão, NÃO imprime nada na tela (exceto erros).
 """
 
-import sys
 import argparse
 import json
+import os
 import requests
 import time  # Importado globalmente para rate limiting
 # import urllib3  <-- Removido para evitar conflito de versão (usamos via requests)
@@ -436,12 +436,13 @@ def extrair_an_servidor(registro):
         srv = "HBR"
     
     if an and srv:
-        # Salva o subjson individual para uso pelo downloader ou pipeline
-        try:
-            meta_path = COCKPIT_METADATA_DIR / f"{an}.json"
-            meta_path.write_text(json.dumps(registro, indent=2, ensure_ascii=False), encoding="utf-8")
-        except Exception as e:
-            log_debug(f"Erro ao salvar metadados cockpit para {an}: {e}")
+        # Salva o subjson individual apenas se solicitado (Config ou CLI)
+        if getattr(config, 'SAVE_METADATA', False):
+            try:
+                meta_path = COCKPIT_METADATA_DIR / f"{an}.json"
+                meta_path.write_text(json.dumps(registro, indent=2, ensure_ascii=False), encoding="utf-8")
+            except Exception as e:
+                log_debug(f"Erro ao salvar metadados cockpit para {an}: {e}")
             
         return an, srv
         
@@ -713,6 +714,7 @@ def main():
     opt_group.add_argument("--an", nargs="+", help="Busca por lista de Accession Numbers (ignora datas/cenários)")
     opt_group.add_argument("--an-file", type=str, help="Caminho de arquivo JSON contendo lista de ANs")
     opt_group.add_argument("--no-tqdm", action="store_true", help="Desativa barra de progresso (útil para logs)")
+    opt_group.add_argument("--metadado", action="store_true", help="Salva metadados Cockpit/DICOM")
     opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
 
     # Filtros de Origem
@@ -721,6 +723,10 @@ def main():
     flt_group.add_argument("--internado", action="store_true", help="Filtra por Internado (ID 4)")
     
     args = parser.parse_args()
+
+    # Override config se flag presente
+    if args.metadado:
+        config.SAVE_METADATA = True
 
     # Validação: ou tem cenários ou tem AN (arg ou file)
     if not args.cenarios and not args.an and not args.an_file:
