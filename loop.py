@@ -98,11 +98,16 @@ class LoopController:
 # Worker
 # ============================================================
 
+# Variável global para delay entre downloads (controlada via CLI)
+DOWNLOAD_DELAY = 0
+
 def worker_download(servidor: str, lista_ans: list, controller=None):
     """
     Processa uma lista de ANs sequencialmente.
     Chamado em Thread separada.
     """
+    global DOWNLOAD_DELAY
+    
     total = len(lista_ans)
     log_info(f"[{servidor}] Iniciando lote com {total} exames.")
 
@@ -129,6 +134,10 @@ def worker_download(servidor: str, lista_ans: list, controller=None):
                 sucessos += 1
             else:
                 erros += 1
+            
+            # Delay entre downloads (se configurado)
+            if DOWNLOAD_DELAY > 0 and i < total:
+                time.sleep(DOWNLOAD_DELAY)
 
         except Exception as e:
             if "interpreter shutdown" in str(e):
@@ -270,6 +279,7 @@ def main(**kwargs):
     arg_group.add_argument("cenarios", nargs="*", help="Lista de cenários (ex: MONITOR) ou arquivos JSON")
     opt_group.add_argument("--no-prepare", action="store_true", help="Pular etapa de preparação (Login/Sessão)")
     opt_group.add_argument("--metadado", action="store_true", help="Ativa exportação de metadados Cockpit/DICOM")
+    opt_group.add_argument("--delay", type=float, default=0, help="Delay em segundos entre cada download de AN (ex: 1.5)")
     opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
     
     # Se chamado via GUI, args podem vir vazios ou customizados
@@ -281,6 +291,12 @@ def main(**kwargs):
     # Override config se flag presente
     if args.metadado:
         config.SAVE_METADATA = True
+    
+    # Seta delay global para threads
+    global DOWNLOAD_DELAY
+    if args.delay > 0:
+        DOWNLOAD_DELAY = args.delay
+        log_info(f"Delay entre downloads: {DOWNLOAD_DELAY}s")
     
     # Prioridade: 1. Argumentos CLI, 2. config.SCENARIOS
     if args.cenarios:
