@@ -34,6 +34,7 @@ from config import (
     URL_BASE,
     SESSION_FILE,
     DATA_DIR,
+    COCKPIT_METADATA_DIR,
     SYSTEM_CONFIG,
 )
 
@@ -428,10 +429,22 @@ def extrair_an_servidor(registro):
         an = f"{an}_{id_exame}"
 
     unidade = (registro.get("nm_unidade") or "").upper().strip()
+    srv = None
     if unidade == "HAC":
-        return an, "HAC"
+        srv = "HAC"
     elif unidade == "HOBRA":
-        return an, "HBR"
+        srv = "HBR"
+    
+    if an and srv:
+        # Salva o subjson individual para uso pelo downloader ou pipeline
+        try:
+            meta_path = COCKPIT_METADATA_DIR / f"{an}.json"
+            meta_path.write_text(json.dumps(registro, indent=2, ensure_ascii=False), encoding="utf-8")
+        except Exception as e:
+            log_debug(f"Erro ao salvar metadados cockpit para {an}: {e}")
+            
+        return an, srv
+        
     return None, None
 
 def fetch_cenario(nome_cenario: str) -> dict:

@@ -164,6 +164,14 @@ def limpar_antigos(dias=7):
     if removidos > 0:
         log_info(f"Manutenção: {removidos} arquivos de progresso antigos (> {dias} dias) foram removidos.")
 
+    # Também limpa metadados cockpit órfãos/antigos
+    if config.COCKPIT_METADATA_DIR.exists():
+        for p in config.COCKPIT_METADATA_DIR.glob("*.json"):
+            try:
+                if p.stat().st_mtime < limite:
+                    p.unlink()
+            except: pass
+
 
 def verificar_retencao_exames():
     """
@@ -240,6 +248,13 @@ def verificar_retencao_exames():
                     log_info(f"Limpeza: JSON órfão removido ({j.name})")
                 except Exception as e:
                     log_erro(f"Erro ao remover JSON órfão {j.name}: {e}")
+        
+        # Limpa COCKPIT_METADATA_DIR órfão
+        if config.COCKPIT_METADATA_DIR.exists():
+            for j in config.COCKPIT_METADATA_DIR.glob("*.json"):
+                if not (base / j.stem).exists():
+                    try: j.unlink()
+                    except: pass
 
 
 # ============================================================

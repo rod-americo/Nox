@@ -460,6 +460,21 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
             except: pass
 
         log_finalizado(f"[{servidor}] AN {an} — completo ({vel_final:.1f} img/s)")
+        
+        # ------------------------------------------------------------
+        # Cópia do Metadado Cockpit (subjson)
+        # ------------------------------------------------------------
+        meta_origem = config.COCKPIT_METADATA_DIR / f"{an}.json"
+        if meta_origem.exists():
+            try:
+                # No Linux/Persistent, salva como metadata_cockpit.json na pasta do exame
+                if config.STORAGE_MODE == "persistent":
+                    shutil.copy2(meta_origem, destino_base / "metadata_cockpit.json")
+                # Se desejar manter no transient também (OsiriX), poderia ser movido para algum lugar…
+                # Por enquanto, mantemos na pasta DICOM (que no persistent é o destino final).
+            except Exception as e:
+                log_debug(f"Erro ao copiar metadados cockpit para pasta final: {e}")
+
         return True
 
     # ------------------------------------------------------------
