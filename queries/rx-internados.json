@@ -1,0 +1,95 @@
+{
+  "cd_id": "",
+  "shortName": "dt_pedido",
+  "shortOrder": -1,
+  "nm_notificacao": "",
+  "nm_paciente": "",
+  "cd_prontuario": "",
+  "id_exame_pedido": "",
+  "cd_atendimento_his": "",
+  "cd_pedido_his": "",
+  "tp_status": [
+    "NOVO"
+  ],
+  "cd_item_pedido_his": "",
+  "exame": {
+    "id_exame": [],
+    "excluindo": false
+  },
+  "nm_setor_executante": [],
+  "tp_sexo": "",
+  "cd_unidade": [],
+  "imagem": [
+    "S"
+  ],
+  "nm_periodo_imagem": {
+    "value": "doisMeses",
+    "label": "Há 2 Meses"
+  },
+  "dt_imagem": {
+    "dt_inicio": "2025-12-06T00:00:00.000Z",
+    "dt_fim": "2026-02-06T23:59:59.000Z"
+  },
+  "nm_periodo_pedido": {
+    "value": "",
+    "label": ""
+  },
+  "dt_pedido": {
+    "dt_inicio": "",
+    "dt_fim": ""
+  },
+  "nm_periodo_entrega": {
+    "value": "",
+    "label": ""
+  },
+  "dt_entrega": {
+    "dt_inicio": "",
+    "dt_fim": "",
+    "sn_datas_futuras": ""
+  },
+  "nm_periodo_estudo": {
+    "value": "",
+    "label": ""
+  },
+  "dt_cadastro": {
+    "dt_inicio": "",
+    "dt_fim": ""
+  },
+  "cd_modalidade": [
+    "CR",
+    "DR",
+    "DX"
+  ],
+  "sla": [],
+  "inconformidade": [],
+  "ditado": [],
+  "laudado": [],
+  "digitado": [],
+  "revisado": [],
+  "assinado": [],
+  "liberado": [],
+  "entregue": [],
+  "tp_criticidade": [],
+  "nm_origem_atendimento": "",
+  "nm_classificacao_risco": "",
+  "nm_social_paciente": "",
+  "id_origem_atendimento": [
+    "3"
+  ],
+  "nm_medico_executante": "",
+  "nm_medico_revisor": "",
+  "id_medico_executante": "",
+  "id_medico_revisor": "",
+  "nr_prontuario_hospitalar": "",
+  "id_procedimento": [],
+  "nm_medico_solicitante": "",
+  "id_medico_solicitante": "",
+  "id_convenio": [],
+  "id_setor_solicitante": [],
+  "cd_status_ia": [],
+  "id_risco": [],
+  "tp_impresso": "",
+  "tp_comentario": "",
+  "tp_anexo": "",
+  "tp_certificado": ""
+}
