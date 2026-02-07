@@ -311,7 +311,9 @@ PIPELINE_USE_REVISAR = get("PIPELINE", "use_revisar", "false").lower() == "true"
 _pipeline_default_medico_id = get("PIPELINE", "default_medico_id", "").strip()
 if not _pipeline_default_medico_id:
     _pipeline_default_medico_id = str(os.environ.get("MEDICO_EXECUTANTE_ID", "")).strip()
-PIPELINE_DEFAULT_MEDICO_ID = int(_pipeline_default_medico_id) if _pipeline_default_medico_id.isdigit() else None
+if not _pipeline_default_medico_id:
+    _pipeline_default_medico_id = "165111"
+PIPELINE_DEFAULT_MEDICO_ID = int(_pipeline_default_medico_id) if _pipeline_default_medico_id.isdigit() else 165111
 
 # Flag para screenshots de debug (Playwright)
 DEBUG_SCREENSHOTS = False  # Ative para salvar screenshots de debug em data/debug/
