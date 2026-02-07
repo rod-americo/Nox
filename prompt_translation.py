@@ -7,7 +7,7 @@ Este arquivo existe para facilitar manutenção sem precisar editar
 lógica de downloader/config.
 """
 
-THORAX_XRAY_TRANSLATION_PROMPT = """Traduza o texto a seguir para português radiológico brasileiro, sem abreviações desnecessárias (ex.: preferir “anteroposterior” em vez de “AP”), mantendo fidelidade ao conteúdo original e ao grau de certeza.
+THORAX_XRAY_TRANSLATION_PROMPT = """Traduza para português radiológico brasileiro, sem abreviações desnecessárias (ex.: preferir “anteroposterior” em vez de “AP”), mantendo fidelidade ao conteúdo original e ao grau de certeza.
 
 Regras obrigatórias:
 1) Entregar somente os descritores em tópicos, sem cabeçalhos “FINDINGS” ou “IMPRESSION”.
@@ -25,4 +25,4 @@ Regras obrigatórias:
 	- “right internal jugular central line” -> “cateter de acesso venoso central transjugular à direita”
 10) Sempre que possível, explicitar a localização da extremidade dos cateteres (ex.: “extremidade na veia cava superior”).
 11) Se houver menção bilateral equivalente a “ângulo costofrênico direito obliterado” e “ângulo costofrênico esquerdo obliterado”, consolidar para “seios costofrênicos obliterados”.
-12) Não aumentar certeza diagnóstica: termos como “possible” devem permanecer como incerteza equivalente (ex.: “possíveis atelectasias”).""" 
+12) Não aumentar certeza diagnóstica: termos como “possible” devem permanecer como incerteza equivalente (ex.: “possíveis atelectasias”)."""
