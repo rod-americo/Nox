@@ -91,6 +91,12 @@ strict = false
 request_format = multipart_single_file
 # usado no envio multipart (campo prompt); se vazio usa prompt_translation.py
 prompt =
+# grava automaticamente o laudo após resposta da API
+auto_write_report = true
+# usa endpoint de revisão (laudarrevisar) ao gravar
+use_revisar = false
+# fallback para médico executante quando metadata_cockpit não tiver id
+default_medico_id =
 ```
 
 Regras atuais do modo `pipeline`:
@@ -98,6 +104,8 @@ Regras atuais do modo `pipeline`:
 - A idade é extraída do DICOM (`PatientAge`, ex: `093Y` -> `93-years-old`).
 - Para envio multipart com múltiplos DICOMs, usa o primeiro arquivo da 2ª série; se houver apenas 1 série, usa o 2º arquivo.
 - A resposta da API é gravada integralmente em `/Users/rodrigo/Nox/data/DICOM/<AN>/pipeline_response.json` (ou no `persistent_dir` configurado).
+- Após resposta com sucesso, o laudo é montado e gravado automaticamente usando `id_exame_pedido` do `metadata_cockpit.json`.
+- O médico executante é lido de `PIPELINE.default_medico_id` (ou env `MEDICO_EXECUTANTE_ID`).
 
 ---
 

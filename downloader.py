@@ -52,6 +52,7 @@ import argparse
 import subprocess
 import platform
 import unicodedata
+import sys
 from pathlib import Path
 from time import perf_counter
 from concurrent.futures import ThreadPoolExecutor
@@ -454,6 +455,87 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
         return not getattr(config, "PIPELINE_STRICT", False)
 
 
+def _gravar_laudo_do_pipeline(an: str, destino_base: Path) -> bool:
+    """
+    Monta payload RTF a partir do pipeline_response.json e grava laudo no Cockpit.
+    """
+    if not getattr(config, "PIPELINE_AUTO_WRITE_REPORT", True):
+        log_info(f"[PIPELINE] AN {an}: gravação automática de laudo desativada.")
+        return True
+
+    cockpit_meta_file = destino_base / "metadata_cockpit.json"
+    if not cockpit_meta_file.exists():
+        log_aviso(f"[PIPELINE] AN {an}: metadata_cockpit.json ausente. Laudo não foi gravado.")
+        return not getattr(config, "PIPELINE_STRICT", False)
+
+    pipeline_resp_file = destino_base / "pipeline_response.json"
+    if not pipeline_resp_file.exists():
+        log_aviso(f"[PIPELINE] AN {an}: pipeline_response.json ausente. Laudo não foi gravado.")
+        return not getattr(config, "PIPELINE_STRICT", False)
+
+    try:
+        cockpit = json.loads(cockpit_meta_file.read_text(encoding="utf-8"))
+    except Exception as e:
+        log_erro(f"[PIPELINE] AN {an}: erro lendo metadata_cockpit.json: {e}")
+        return not getattr(config, "PIPELINE_STRICT", False)
+
+    id_laudo = cockpit.get("id_exame_pedido")
+    if not id_laudo:
+        log_erro(f"[PIPELINE] AN {an}: id_exame_pedido ausente no metadata_cockpit.")
+        return not getattr(config, "PIPELINE_STRICT", False)
+
+    medico_id = getattr(config, "PIPELINE_DEFAULT_MEDICO_ID", None)
+    if not medico_id:
+        log_erro(f"[PIPELINE] AN {an}: defina PIPELINE.default_medico_id ou MEDICO_EXECUTANTE_ID.")
+        return not getattr(config, "PIPELINE_STRICT", False)
+
+    title = str(cockpit.get("exame") or cockpit.get("nm_exame") or "LAUDO")
+    payload_path = destino_base / "laudo_payload.json"
+
+    montar_cmd = [
+        sys.executable,
+        str(config.BASE_DIR / "montar_laudo_rtf.py"),
+        "--id-laudo", str(id_laudo),
+        "--medico-id", str(medico_id),
+        "--title", title,
+        "--pipeline-response", str(pipeline_resp_file),
+        "--payload-path", str(payload_path),
+    ]
+    try:
+        montar_proc = subprocess.run(montar_cmd, capture_output=True, text=True, check=False)
+    except Exception as e:
+        log_erro(f"[PIPELINE] AN {an}: falha ao executar montar_laudo_rtf.py: {e}")
+        return not getattr(config, "PIPELINE_STRICT", False)
+
+    if montar_proc.returncode != 0:
+        erro = (montar_proc.stderr or montar_proc.stdout or "").strip()
+        log_erro(f"[PIPELINE] AN {an}: montar_laudo_rtf.py falhou: {erro}")
+        return not getattr(config, "PIPELINE_STRICT", False)
+
+    gravar_cmd = [
+        sys.executable,
+        str(config.BASE_DIR / "gravar_laudo.py"),
+        str(id_laudo),
+        "--payload-file", str(payload_path),
+    ]
+    if getattr(config, "PIPELINE_USE_REVISAR", False):
+        gravar_cmd.append("--revisar")
+
+    try:
+        gravar_proc = subprocess.run(gravar_cmd, capture_output=True, text=True, check=False)
+    except Exception as e:
+        log_erro(f"[PIPELINE] AN {an}: falha ao executar gravar_laudo.py: {e}")
+        return not getattr(config, "PIPELINE_STRICT", False)
+
+    if gravar_proc.returncode != 0:
+        erro = (gravar_proc.stderr or gravar_proc.stdout or "").strip()
+        log_erro(f"[PIPELINE] AN {an}: gravar_laudo.py falhou: {erro}")
+        return not getattr(config, "PIPELINE_STRICT", False)
+
+    log_ok(f"[PIPELINE] AN {an}: laudo gravado com sucesso (id_exame_pedido={id_laudo}).")
+    return True
+
+
 # ============================================================
 # Baixar um único AN
 # ============================================================
@@ -716,6 +798,11 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
             entrega_ok = _enviar_para_pipeline_api(an, servidor, destino_base, js)
             if not entrega_ok:
                 js["status"] = "pipeline_erro"
+                _gravar_json(an, js)
+                return False
+            laudo_ok = _gravar_laudo_do_pipeline(an, destino_base)
+            if not laudo_ok:
+                js["status"] = "pipeline_laudo_erro"
                 _gravar_json(an, js)
                 return False
 

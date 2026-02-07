@@ -306,6 +306,12 @@ PIPELINE_TIMEOUT = getint("PIPELINE", "timeout", 30)
 PIPELINE_STRICT = get("PIPELINE", "strict", "false").lower() == "true"
 PIPELINE_REQUEST_FORMAT = get("PIPELINE", "request_format", "json").strip().lower()
 PIPELINE_PROMPT = get("PIPELINE", "prompt", "").strip() or THORAX_XRAY_TRANSLATION_PROMPT
+PIPELINE_AUTO_WRITE_REPORT = get("PIPELINE", "auto_write_report", "true").lower() == "true"
+PIPELINE_USE_REVISAR = get("PIPELINE", "use_revisar", "false").lower() == "true"
+_pipeline_default_medico_id = get("PIPELINE", "default_medico_id", "").strip()
+if not _pipeline_default_medico_id:
+    _pipeline_default_medico_id = str(os.environ.get("MEDICO_EXECUTANTE_ID", "")).strip()
+PIPELINE_DEFAULT_MEDICO_ID = int(_pipeline_default_medico_id) if _pipeline_default_medico_id.isdigit() else None
 
 # Flag para screenshots de debug (Playwright)
 DEBUG_SCREENSHOTS = False  # Ative para salvar screenshots de debug em data/debug/
