@@ -106,7 +106,8 @@ def normalize_final_report_text(text: str) -> str:
         cleaned = line.lstrip()
         if cleaned.startswith("- "):
             cleaned = cleaned[2:]
-        normalized_lines.append(cleaned)
+        if cleaned.strip():
+            normalized_lines.append(cleaned)
     return "\n".join(normalized_lines).strip()
 
 
