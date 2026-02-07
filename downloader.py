@@ -302,6 +302,14 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
         headers["Authorization"] = f"Bearer {token}"
 
     timeout = max(1, int(getattr(config, "PIPELINE_TIMEOUT", 30)))
+    response_trace_file = destino_base / "pipeline_response.json"
+
+    def _safe_json_or_text(resp: requests.Response):
+        try:
+            return resp.json()
+        except Exception:
+            return resp.text
+
     if request_format == "multipart_single_file":
         dicom_files = sorted(destino_base.glob("*.dcm"))
         if not dicom_files:
@@ -341,8 +349,23 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
             with open(dcm_file, "rb") as fp:
                 files = {"file": (dcm_file.name, fp, "application/dicom")}
                 resp = requests.post(api_url, data=form_data, files=files, headers=headers, timeout=(5, timeout))
+                trace = {
+                    "request": {
+                        "url": api_url,
+                        "format": request_format,
+                        "an": an,
+                        "servidor": servidor,
+                        "exame": exame,
+                        "file_name": dcm_file.name,
+                        "fields": form_data,
+                    },
+                    "response": {
+                        "status_code": resp.status_code,
+                        "body": _safe_json_or_text(resp),
+                    },
+                }
+                response_trace_file.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
                 resp.raise_for_status()
-                (destino_base / "pipeline_response.json").write_text(resp.text, encoding="utf-8")
             log_ok(f"[PIPELINE] AN {an}: multipart enviado para API ({dcm_file.name}).")
             return True
         except Exception as e:
@@ -366,8 +389,22 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
     try:
         headers_json = {"Content-Type": "application/json", **headers}
         resp = requests.post(api_url, json=payload, headers=headers_json, timeout=(5, timeout))
+        trace = {
+            "request": {
+                "url": api_url,
+                "format": request_format,
+                "an": an,
+                "servidor": servidor,
+                "exame": exame,
+                "payload": payload,
+            },
+            "response": {
+                "status_code": resp.status_code,
+                "body": _safe_json_or_text(resp),
+            },
+        }
+        response_trace_file.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
         resp.raise_for_status()
-        (destino_base / "pipeline_response.json").write_text(resp.text, encoding="utf-8")
         log_ok(f"[PIPELINE] AN {an}: payload JSON enviado para API.")
         return True
     except Exception as e:
