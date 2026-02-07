@@ -306,6 +306,7 @@ PIPELINE_TIMEOUT = getint("PIPELINE", "timeout", 30)
 PIPELINE_STRICT = get("PIPELINE", "strict", "false").lower() == "true"
 PIPELINE_REQUEST_FORMAT = get("PIPELINE", "request_format", "json").strip().lower()
 PIPELINE_PROMPT = get("PIPELINE", "prompt", "").strip() or THORAX_XRAY_TRANSLATION_PROMPT
+PIPELINE_REPORT_TITLE = get("PIPELINE", "report_title", "RADIOGRAFIA DE TÓRAX NO LEITO").strip() or "RADIOGRAFIA DE TÓRAX NO LEITO"
 PIPELINE_AUTO_WRITE_REPORT = get("PIPELINE", "auto_write_report", "true").lower() == "true"
 PIPELINE_USE_REVISAR = get("PIPELINE", "use_revisar", "false").lower() == "true"
 _pipeline_default_medico_id = get("PIPELINE", "default_medico_id", "").strip()

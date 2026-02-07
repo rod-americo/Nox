@@ -492,7 +492,7 @@ def _gravar_laudo_do_pipeline(an: str, destino_base: Path) -> bool:
         log_erro(f"[PIPELINE] AN {an}: defina PIPELINE.default_medico_id ou MEDICO_EXECUTANTE_ID.")
         return not getattr(config, "PIPELINE_STRICT", False)
 
-    title = str(cockpit.get("exame") or cockpit.get("nm_exame") or "LAUDO")
+    title = getattr(config, "PIPELINE_REPORT_TITLE", "RADIOGRAFIA DE TÓRAX NO LEITO")
     payload_path = destino_base / "laudo_payload.json"
 
     montar_cmd = [
