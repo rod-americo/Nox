@@ -10,9 +10,10 @@ FUNCIONALIDADES PRINCIPAIS:
 1. Download paralelo de imagens DICOM usando ThreadPoolExecutor
 2. Retry automático com fallback entre servidores (HAC → HBR)
 3. Rastreamento de progresso via arquivos JSON
-4. Suporte a dois modos de armazenamento:
+4. Suporte a modos de armazenamento:
    - Persistent: Mantém arquivos em disco (RadiAnt/Windows)
    - Transient: Move para OsiriX Incoming e remove temporários (OsiriX/macOS)
+   - Pipeline: Mantém arquivos, força metadados e permite envio para API externa
 
 MODOS DE USO:
 
@@ -50,6 +51,7 @@ import time
 import argparse
 import subprocess
 import platform
+import unicodedata
 from pathlib import Path
 from time import perf_counter
 from concurrent.futures import ThreadPoolExecutor
@@ -57,7 +59,7 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 import pydicom
 import config
-from logger import log_info, log_ok, log_erro, log_debug, log_finalizado, log_skip
+from logger import log_info, log_ok, log_erro, log_debug, log_finalizado, log_skip, log_aviso
 from query import obter_metadata
 from query import obter_metadata
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeRemainingColumn, TransferSpeedColumn, ProgressColumn
@@ -207,7 +209,7 @@ def _baixar_sop(url: str, destino: Path, extract_metadata: bool = False, verbose
                         if destino.exists(): destino.unlink()
                         final_ok = False
                 
-                elif config.STORAGE_MODE == "persistent":
+                elif config.STORAGE_MODE in ["persistent", "pipeline"]:
                     # Lógica antiga de cópia para OsiriX (Legacy)
                     if config.VIEWER in ["osirix", "horos"] and config.OSIRIX_INCOMING and config.OSIRIX_INCOMING.exists():
                         try:
@@ -262,6 +264,117 @@ def _salvar_metadata_dicom(dcm_path: Path, output_json: Path):
         return False
 
 
+def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: dict) -> bool:
+    """
+    Envia payload simplificado para a API de pipeline, quando configurada.
+    Se a API não estiver configurada, não bloqueia o fluxo de download.
+    """
+    if not getattr(config, "PIPELINE_ENABLED", True):
+        log_info(f"[PIPELINE] AN {an}: envio desativado em config ([PIPELINE] enabled=false).")
+        return True
+
+    api_url = getattr(config, "PIPELINE_API_URL", "")
+    if not api_url:
+        log_aviso(f"[PIPELINE] AN {an}: api_url não configurada. Envio ignorado.")
+        return True
+
+    cockpit_meta = destino_base / "metadata_cockpit.json"
+    if not cockpit_meta.exists():
+        log_aviso(f"[PIPELINE] AN {an}: metadata_cockpit.json ausente. Envio ignorado.")
+        return True
+
+    try:
+        cockpit = json.loads(cockpit_meta.read_text(encoding="utf-8"))
+    except Exception as e:
+        log_erro(f"[PIPELINE] AN {an}: falha lendo metadata_cockpit.json: {e}")
+        return not getattr(config, "PIPELINE_STRICT", False)
+
+    exame = str(cockpit.get("exame", "") or "")
+    exame_norm = unicodedata.normalize("NFKD", exame).encode("ascii", "ignore").decode("ascii").upper()
+    if ("TORAX" not in exame_norm) or ("PERFIL" in exame_norm):
+        log_skip(f"[PIPELINE] AN {an}: exame '{exame}' fora do critério (requer TORAX e sem PERFIL).")
+        return True
+
+    request_format = getattr(config, "PIPELINE_REQUEST_FORMAT", "json")
+    headers = {}
+    token = getattr(config, "PIPELINE_API_TOKEN", "")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    timeout = max(1, int(getattr(config, "PIPELINE_TIMEOUT", 30)))
+    if request_format == "multipart_single_file":
+        dicom_files = sorted(destino_base.glob("*.dcm"))
+        if not dicom_files:
+            log_erro(f"[PIPELINE] AN {an}: nenhum DICOM encontrado para envio multipart.")
+            return not getattr(config, "PIPELINE_STRICT", False)
+
+        dcm_file = dicom_files[0]
+        age_value = ""
+        try:
+            ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True)
+            raw_age = str(getattr(ds, "PatientAge", "") or "").strip()
+            if raw_age and len(raw_age) >= 4 and raw_age[:3].isdigit():
+                age_num = int(raw_age[:3])
+                age_unit = raw_age[3].upper()
+                if age_unit == "Y":
+                    age_value = f"{age_num}-years-old"
+                elif age_unit == "M":
+                    age_value = f"{age_num}-months-old"
+                elif age_unit == "W":
+                    age_value = f"{age_num}-weeks-old"
+                elif age_unit == "D":
+                    age_value = f"{age_num}-days-old"
+        except Exception as e:
+            log_debug(f"[PIPELINE] AN {an}: não foi possível extrair PatientAge: {e}")
+        if not age_value:
+            log_aviso(f"[PIPELINE] AN {an}: PatientAge ausente/indefinido no DICOM. Envio ignorado.")
+            return True
+
+        form_data = {
+            "age": age_value,
+            "prompt": getattr(config, "PIPELINE_PROMPT", ""),
+        }
+        # Remove campos vazios para não enviar dado inútil
+        form_data = {k: v for k, v in form_data.items() if v}
+
+        try:
+            with open(dcm_file, "rb") as fp:
+                files = {"file": (dcm_file.name, fp, "application/dicom")}
+                resp = requests.post(api_url, data=form_data, files=files, headers=headers, timeout=(5, timeout))
+                resp.raise_for_status()
+                (destino_base / "pipeline_response.json").write_text(resp.text, encoding="utf-8")
+            log_ok(f"[PIPELINE] AN {an}: multipart enviado para API ({dcm_file.name}).")
+            return True
+        except Exception as e:
+            log_erro(f"[PIPELINE] AN {an}: falha no envio multipart: {e}")
+            return not getattr(config, "PIPELINE_STRICT", False)
+
+    dicom_meta_files = sorted(destino_base.glob("metadado_*_dicom.json"))
+    payload = {
+        "an": an,
+        "servidor": servidor,
+        "study_uid": js.get("study_uid", ""),
+        "patient_name": js.get("patient_name", ""),
+        "study_desc": js.get("study_desc", ""),
+        "modality": js.get("modality", ""),
+        "dicom_dir": str(destino_base),
+        "metadata_cockpit_path": str(cockpit_meta) if cockpit_meta.exists() else "",
+        "dicom_metadata_paths": [str(p) for p in dicom_meta_files],
+        "storage_mode": config.STORAGE_MODE,
+    }
+
+    try:
+        headers_json = {"Content-Type": "application/json", **headers}
+        resp = requests.post(api_url, json=payload, headers=headers_json, timeout=(5, timeout))
+        resp.raise_for_status()
+        (destino_base / "pipeline_response.json").write_text(resp.text, encoding="utf-8")
+        log_ok(f"[PIPELINE] AN {an}: payload JSON enviado para API.")
+        return True
+    except Exception as e:
+        log_erro(f"[PIPELINE] AN {an}: falha no envio JSON para API: {e}")
+        return not getattr(config, "PIPELINE_STRICT", False)
+
+
 # ============================================================
 # Baixar um único AN
 # ============================================================
@@ -311,7 +424,7 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
         # Diretório base será temporário
         destino_base = config.TMP_DIR / an
     else:
-        # Diretório base será persistente
+        # Diretório base será persistente/local (persistent ou pipeline)
         # OUTPUT_DICOM_DIR já vem configurado com detecção automática de SO
         destino_base = config.OUTPUT_DICOM_DIR / an
     
@@ -491,7 +604,7 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
         if meta_origem.exists():
             try:
                 # Se houver metadado no cache, move para a pasta final (evita duplicata)
-                if config.STORAGE_MODE == "persistent":
+                if config.STORAGE_MODE in ["persistent", "pipeline"]:
                     shutil.move(str(meta_origem), str(destino_base / "metadata_cockpit.json"))
             except Exception as e:
                 log_debug(f"Erro ao mover metadados cockpit para pasta final: {e}")
@@ -519,6 +632,13 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
                     
                 except Exception as e:
                     log_debug(f"Erro ao processar metadados de série: {e}")
+
+        if config.STORAGE_MODE == "pipeline":
+            entrega_ok = _enviar_para_pipeline_api(an, servidor, destino_base, js)
+            if not entrega_ok:
+                js["status"] = "pipeline_erro"
+                _gravar_json(an, js)
+                return False
 
         return True
 

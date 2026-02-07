@@ -15,6 +15,7 @@
 ### Modos de Armazenamento (`Storage Mode`)
 *   **Persistent (Padrão/Windows)**: Mantém os arquivos DICOM em pastas locais até atingir o limite (`max_exames`). Ideal para RadiAnt.
 *   **Transient (macOS/OsiriX)**: Baixa o exame, move imediatamente para o `Incoming` do OsiriX e remove o arquivo temporário. O gerenciamento de histórico é feito apenas via metadados (JSON), sem ocupar espaço duplicado.
+*   **Pipeline**: Mantém os arquivos localmente (como Persistent), força geração de metadados e permite envio de payload para API externa.
 
 ### Integração com Visualizadores
 *   **RadiAnt**: Abre a pasta do exame diretamente.
@@ -28,6 +29,7 @@
 *   **Controle de Retenção Dinâmico**: Slider na interface para ajustar o limite de exames (`max_exames`) em tempo real.
 *   **Download Manual**: Selecione o servidor (HBR/HAC) e digite apenas o *Accession Number* para baixar.
 *   **Busca e Filtragem**: Barra de busca para filtrar exames instantaneamente por Nome, AN, Modalidade ou Descrição.
+*   **Prompt Centralizado**: O prompt padrão de tradução do pipeline fica em `/Users/rodrigo/Nox/prompt_translation.py`.
 
 ---
 
@@ -45,6 +47,8 @@ pass = SUA_SENHA
 system = linux
 
 [PATHS]
+## Caminho local para modos persistent/pipeline (opcional; tem prioridade)
+persistent_dir = data/DICOM
 # [MacOS/Linux] Caminho da pasta de entrada do OsiriX
 osirix_incoming = /Users/rodrigo/OsiriX Data.nosync/INCOMING.noindex
 # [Windows] Caminho da pasta de entrada mapeada (Network Drive) ou local
@@ -70,9 +74,29 @@ threads = 15
 theme = dark
 # Visualizador preferencial: radiant ou osirix
 viewer = osirix
+# storage_mode: transient, persistent ou pipeline
+storage_mode = persistent
+# save_metadata: true/false (metadado legado ainda aceito)
+save_metadata = false
 # Lista de Cenários (nomes dos arquivos em queries/ sem extensão .json)
 scenarios = ["plantao-rx", "plantao-tc-rm-us"]
+
+[PIPELINE]
+enabled = true
+api_url = https://sua-api/exams
+api_token = SEU_TOKEN
+timeout = 30
+strict = false
+# request_format: json (default) ou multipart_single_file
+request_format = multipart_single_file
+# usado no envio multipart (campo prompt); se vazio usa prompt_translation.py
+prompt =
 ```
+
+Regras atuais do modo `pipeline`:
+- Envia para API apenas quando `metadata_cockpit.json.exame` contém `TORAX` e não contém `PERFIL`.
+- A idade é extraída do DICOM (`PatientAge`, ex: `093Y` -> `93-years-old`).
+- A resposta da API é gravada integralmente em `/Users/rodrigo/Nox/data/DICOM/<AN>/pipeline_response.json` (ou no `persistent_dir` configurado).
 
 ---
 

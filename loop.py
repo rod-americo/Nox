@@ -185,7 +185,7 @@ def limpar_antigos(dias=7):
 def verificar_retencao_exames():
     """
     Mantém apenas os N exames mais recentes.
-    - Persistent: Baseado nas pastas em RADIANT_DICOM_DIR.
+    - Persistent/Pipeline: Baseado nas pastas em OUTPUT_DICOM_DIR.
     - Transient: Baseado nos arquivos JSON em PROGRESS_DIR.
     """
     limite = config.MAX_EXAMES
@@ -212,8 +212,8 @@ def verificar_retencao_exames():
                     log_erro(f"Erro ao remover JSON {j.name}: {e}")
         return
 
-    # --- MODO PERSISTENT (Gerenciamento por Pastas + JSON Sync) ---
-    base = config.RADIANT_DICOM_DIR
+    # --- MODOS LOCAIS (Persistent/Pipeline): Gerenciamento por Pastas + JSON Sync ---
+    base = config.OUTPUT_DICOM_DIR
     if not base.exists():
         return
 

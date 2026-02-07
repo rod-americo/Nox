@@ -19,6 +19,8 @@ OPÇÕES DO ARQUIVO DE CONFIGURAÇÃO (config.ini):
               Define qual diretório DICOM será usado (radiant_dicom ou linux_dicom).
 
 [PATHS]
+  persistent_dir  : (Opcional) Diretório local de saída para modos persistent/pipeline.
+                    Se definido, tem prioridade sobre radiant_dicom/linux_dicom.
   radiant_dicom   : Diretório onde os exames baixados serão salvos (Persistent) ou montados (Transient).
                     Ex: C:\\DICOM (Windows) ou /Users/user/DICOM (Mac)
   linux_dicom     : Diretório de saída para ambientes Linux headless. Pode ser caminho absoluto ou
@@ -37,7 +39,16 @@ OPÇÕES DO ARQUIVO DE CONFIGURAÇÃO (config.ini):
   max_exames    : Quantidade máxima de exames mantidos no histórico/disco. Default: 50.
   viewer        : Visualizador preferencial. Opções: 'radiant', 'osirix', 'horos'.
                   Afeta o STORAGE_MODE default (Transient para OsiriX, Persistent para RadiAnt).
+  storage_mode  : (Opcional) Estratégia de entrega: 'transient', 'persistent' ou 'pipeline'.
+  save_metadata : (Opcional) true/false para exportar metadados DICOM. ('metadado' legado ainda funciona)
   scenarios     : Lista de cenários do Cockpit para monitorar. Ex: "MONITOR MONITOR_RX".
+
+[PIPELINE]
+  enabled       : Ativa/desativa envio HTTP do modo pipeline.
+  api_url       : Endpoint de envio do payload.
+  api_token     : Token Bearer opcional.
+  timeout       : Timeout de request (segundos). Default: 30.
+  strict        : Se true, falha o AN quando o envio da API falhar.
 
 [AUTH]
   user : Usuário do Cockpit.
@@ -58,6 +69,7 @@ import os
 import platform
 import configparser
 from pathlib import Path
+from prompt_translation import THORAX_XRAY_TRANSLATION_PROMPT
 
 # === Versão do Aplicativo ===
 VERSION = "2.1.0"
@@ -151,30 +163,40 @@ RETRY_ESPERA = int(get("SETTINGS", "retry_wait", "30"))
 
 
 # ============================================================
-# Diretórios de Saída DICOM (Configurável por SO)
+# Diretórios de Saída DICOM
 # ============================================================
 
-# Windows: Usa RADIANT_DICOM_DIR (C:\DICOM ou Network Share)
+# Legacy paths mantidos por compatibilidade
 RADIANT_DICOM_DIR = Path(get("PATHS", "radiant_dicom", r"C:\\DICOM"))
-
-# Linux/macOS: Pasta alternativa (relativa ao script ou absoluta)
 _linux_dicom_raw = get("PATHS", "linux_dicom", "data/DICOM")
 LINUX_DICOM_DIR = Path(_linux_dicom_raw) if Path(_linux_dicom_raw).is_absolute() else BASE_DIR / _linux_dicom_raw
 
-# Lê configuração de SO do INI (linux, windows, macos)
+# Lê configuração de SO do INI (mantido para fallback legado)
 SYSTEM_CONFIG = get("OPERATIONAL SYSTEM", "system", "windows").lower()
 
-# Define diretório de saída baseado na configuração
-if SYSTEM_CONFIG == "windows":
+# Novo path explícito (preferencial): evita depender de SO para decisão de destino
+_persistent_raw = get("PATHS", "persistent_dir", "").strip()
+if not _persistent_raw:
+    _persistent_raw = get("PATHS", "output_dicom", "").strip()
+
+if _persistent_raw:
+    OUTPUT_DICOM_DIR = Path(_persistent_raw) if Path(_persistent_raw).is_absolute() else BASE_DIR / _persistent_raw
+elif SYSTEM_CONFIG == "windows":
     OUTPUT_DICOM_DIR = RADIANT_DICOM_DIR
-else:  # linux ou macos
+else:
     OUTPUT_DICOM_DIR = LINUX_DICOM_DIR
 
-# OS-dependent OsiriX Incoming
+# OsiriX Incoming:
+# - Preferência por configuração explícita por plataforma (legado)
+# - Fallback para a outra chave, evitando dependência rígida de SO
 if platform.system() == "Windows":
-    _incoming_path = get("PATHS", "osirix_incoming_mapped", "")
+    _incoming_path = get("PATHS", "osirix_incoming_mapped", "").strip()
+    if not _incoming_path:
+        _incoming_path = get("PATHS", "osirix_incoming", "").strip()
 else:
-    _incoming_path = get("PATHS", "osirix_incoming", "")
+    _incoming_path = get("PATHS", "osirix_incoming", "").strip()
+    if not _incoming_path:
+        _incoming_path = get("PATHS", "osirix_incoming_mapped", "").strip()
 
 OSIRIX_INCOMING = Path(_incoming_path) if _incoming_path else Path("")
 
@@ -225,7 +247,10 @@ THEME = "light" if _raw_theme == "light" else "dark"
 VIEWER        = get("SETTINGS", "viewer", "radiant").lower()
 _viewer_display = "OsiriX" if VIEWER == "osirix" else "RadiAnt"
 TITLE         = f"Assistente :: {_viewer_display} :: Mezo"
-SAVE_METADATA = get("SETTINGS", "metadado", "false").lower() == "true"
+_save_metadata = get("SETTINGS", "save_metadata", "")
+if _save_metadata == "":
+    _save_metadata = get("SETTINGS", "metadado", "false")
+SAVE_METADATA = _save_metadata.lower() == "true"
 
 # Criar diretório de saída DICOM (OUTPUT_DICOM_DIR já foi definido com detecção de SO)
 OUTPUT_DICOM_DIR.mkdir(parents=True, exist_ok=True)
@@ -246,11 +271,12 @@ except:
     else:
         SCENARIOS = [s.strip().strip('"\'') for s in _raw_scenarios.split()]
 
-# Detecção de Storage Mode (Persistent vs Transient)
+# Detecção de Storage Mode (Persistent vs Transient vs Pipeline)
 # - Persistent: Mantém arquivos DICOM em disco (ideal para RadiAnt/Windows)
 # - Transient: Move arquivos para OsiriX Incoming e remove temporários (ideal para OsiriX/macOS)
+# - Pipeline: Mantém arquivos + metadados para integração com API externa
 _storage_conf = get("SETTINGS", "storage_mode", "").lower()
-if _storage_conf in ["transient", "persistent"]:
+if _storage_conf in ["transient", "persistent", "pipeline"]:
     # Usuário especificou explicitamente no config.ini
     STORAGE_MODE = _storage_conf
 else:
@@ -264,6 +290,19 @@ else:
         STORAGE_MODE = "transient"
     else:
         STORAGE_MODE = "persistent"
+
+# Pipeline sempre exige metadados para empacotamento/integração
+if STORAGE_MODE == "pipeline":
+    SAVE_METADATA = True
+
+# Configuração de integração de pipeline (envio externo)
+PIPELINE_ENABLED = get("PIPELINE", "enabled", "true").lower() == "true"
+PIPELINE_API_URL = get("PIPELINE", "api_url", "").strip()
+PIPELINE_API_TOKEN = get("PIPELINE", "api_token", "").strip()
+PIPELINE_TIMEOUT = getint("PIPELINE", "timeout", 30)
+PIPELINE_STRICT = get("PIPELINE", "strict", "false").lower() == "true"
+PIPELINE_REQUEST_FORMAT = get("PIPELINE", "request_format", "json").strip().lower()
+PIPELINE_PROMPT = get("PIPELINE", "prompt", "").strip() or THORAX_XRAY_TRANSLATION_PROMPT
 
 # Flag para screenshots de debug (Playwright)
 DEBUG_SCREENSHOTS = False  # Ative para salvar screenshots de debug em data/debug/
@@ -283,5 +322,6 @@ if __name__ == "__main__":
     print(f"Web Base URL:     {URL_BASE}")
     print(f"DICOM Output:     {OUTPUT_DICOM_DIR}")
     print(f"Storage Mode:     {STORAGE_MODE}")
+    print(f"Save Metadata:    {SAVE_METADATA}")
     print(f"Threads:          {DOWNLOAD_WORKERS}")
     print(f"User:             {USUARIO}")
