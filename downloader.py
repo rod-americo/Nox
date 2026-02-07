@@ -59,6 +59,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import requests
 import pydicom
+from pydicom import config as pydicom_config
+pydicom_config.settings.reading_validation_mode = pydicom_config.IGNORE
 import config
 from logger import log_info, log_ok, log_erro, log_debug, log_finalizado, log_skip, log_aviso
 from query import obter_metadata
