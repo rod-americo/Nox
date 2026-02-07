@@ -386,8 +386,6 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
 
         form_data = {
             "age": age_value,
-            "prompt": getattr(config, "PIPELINE_PROMPT", ""),
-            "model": getattr(config, "PIPELINE_MODEL", ""),
         }
         # Remove campos vazios para não enviar dado inútil
         form_data = {k: v for k, v in form_data.items() if v}
