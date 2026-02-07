@@ -72,7 +72,7 @@ def render_markdown_bold_to_rtf(text: str) -> str:
         if start > last:
             out.append(escape_rtf(text[last:start]))
         inner = match.group(1) if match.group(1) is not None else match.group(2)
-        out.append(r"\b " + escape_rtf(inner) + r"\b0 ")
+        out.append(r"\line \b " + escape_rtf(inner) + r"\b0 ")
         last = end
     if last < len(text):
         out.append(escape_rtf(text[last:]))
