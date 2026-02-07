@@ -60,6 +60,41 @@ def refresh_session() -> dict:
     return load_session()
 
 
+def _normalize_payload(payload: dict, data: argparse.Namespace) -> dict:
+    """
+    Garante campos mínimos esperados pelo endpoint sem sobrescrever valores já presentes.
+    """
+    normalized = dict(payload)
+
+    payload_id = str(normalized.get("idLaudo", "")).strip()
+    arg_id = str(data.id_laudo).strip()
+    if payload_id and payload_id != arg_id:
+        raise RuntimeError(
+            f"idLaudo do payload ({payload_id}) não confere com o argumento ({data.id_laudo})"
+        )
+    if not payload_id:
+        normalized["idLaudo"] = data.id_laudo
+
+    if "idMedicoExecutante" not in normalized:
+        if not data.medico_id:
+            raise RuntimeError("Payload sem idMedicoExecutante e --medico-id não informado")
+        normalized["idMedicoExecutante"] = data.medico_id
+
+    normalized.setdefault("idMedicoRevisor", normalized.get("idMedicoExecutante"))
+    normalized.setdefault("idJustificativaRevisao", 0)
+    normalized.setdefault("justificativaRevisao", "")
+    normalized.setdefault("terceiraOpiniao", False)
+    normalized.setdefault("pendente", False)
+    normalized.setdefault("provisorio", False)
+    normalized.setdefault("urgente", False)
+    normalized.setdefault("textoDaUrgencia", None)
+    normalized.setdefault("nomeContatoUrgencia", None)
+    normalized.setdefault("dataHoraUrgencia", None)
+    normalized.setdefault("tags", [])
+
+    return normalized
+
+
 def call_endpoint(client: requests.Session, url: str, payload: dict) -> dict:
     log_debug(f"POST {url} {payload}")
     resp = client.post(url, json=payload, timeout=30, verify=False)
@@ -84,12 +119,7 @@ def ensure_payload(data: argparse.Namespace) -> dict:
             payload = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise RuntimeError(f"Payload JSON inválido: {exc}") from exc
-        payload_id = str(payload.get("idLaudo", "")).strip()
-        if payload_id and str(data.id_laudo).strip() != payload_id:
-            raise RuntimeError(
-                f"idLaudo do payload ({payload_id}) não confere com o argumento ({data.id_laudo})"
-            )
-        return payload
+        return _normalize_payload(payload, data)
 
     texto = data.texto
     if data.texto_file:
@@ -124,7 +154,7 @@ def ensure_payload(data: argparse.Namespace) -> dict:
         "terceiraOpiniao": False,
         "tags": tags,
     }
-    return payload
+    return _normalize_payload(payload, data)
 
 def run(args: argparse.Namespace):
     log_info("Carregando sessão")

@@ -354,12 +354,15 @@ def main():
     arg_group.add_argument("cenarios", nargs="*", help="Lista de cenários ou arquivos JSON (para geração de payload legado)")
     
     opt_group.add_argument("--mapear-cenarios", action="store_true", help="Faz login e lista todos os cenários disponíveis no site")
+    opt_group.add_argument("--login-only", action="store_true", help="Executa apenas autenticação (sem geração de payload)")
     opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
     
     args = parser.parse_args()
 
     if args.mapear_cenarios:
         mapear_cenarios()
+    elif args.login_only:
+        preparar([])
     else:
         # Se não houver cenários, prepara com lista vazia (apenas login)
         preparar(args.cenarios)
