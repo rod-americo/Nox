@@ -96,6 +96,7 @@ prompt =
 Regras atuais do modo `pipeline`:
 - Envia para API apenas quando `metadata_cockpit.json.exame` contém `TORAX` e não contém `PERFIL`.
 - A idade é extraída do DICOM (`PatientAge`, ex: `093Y` -> `93-years-old`).
+- Para envio multipart com múltiplos DICOMs, usa o primeiro arquivo da 2ª série; se houver apenas 1 série, usa o 2º arquivo.
 - A resposta da API é gravada integralmente em `/Users/rodrigo/Nox/data/DICOM/<AN>/pipeline_response.json` (ou no `persistent_dir` configurado).
 
 ---

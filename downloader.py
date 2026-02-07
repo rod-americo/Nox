@@ -310,13 +310,55 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
         except Exception:
             return resp.text
 
+    def _select_pipeline_dcm(dicom_files: list[Path]) -> Path:
+        """
+        Seleciona o DICOM para envio no pipeline:
+        - Se houver 2+ séries, usa o primeiro arquivo da 2ª série.
+        - Senão, se houver 2+ arquivos, usa o 2º arquivo.
+        - Senão, usa o único arquivo.
+        """
+        enriched = []
+        for p in dicom_files:
+            series_uid = ""
+            series_num = 0
+            instance_num = 0
+            try:
+                ds = pydicom.dcmread(str(p), stop_before_pixels=True)
+                series_uid = str(getattr(ds, "SeriesInstanceUID", "") or "")
+                series_num_raw = str(getattr(ds, "SeriesNumber", "") or "").strip()
+                instance_num_raw = str(getattr(ds, "InstanceNumber", "") or "").strip()
+                if series_num_raw.isdigit():
+                    series_num = int(series_num_raw)
+                if instance_num_raw.isdigit():
+                    instance_num = int(instance_num_raw)
+            except Exception:
+                pass
+            enriched.append((p, series_uid, series_num, instance_num))
+
+        enriched.sort(key=lambda t: (t[2], t[1], t[3], t[0].name))
+        first_idx_by_series = {}
+        for idx, item in enumerate(enriched):
+            uid = item[1] or f"__series_{idx}"
+            if uid not in first_idx_by_series:
+                first_idx_by_series[uid] = idx
+
+        unique_series = list(first_idx_by_series.items())
+        if len(unique_series) >= 2:
+            second_series_idx = unique_series[1][1]
+            return enriched[second_series_idx][0]
+        if len(enriched) >= 2:
+            return enriched[1][0]
+        return enriched[0][0]
+
     if request_format == "multipart_single_file":
         dicom_files = sorted(destino_base.glob("*.dcm"))
         if not dicom_files:
             log_erro(f"[PIPELINE] AN {an}: nenhum DICOM encontrado para envio multipart.")
             return not getattr(config, "PIPELINE_STRICT", False)
 
-        dcm_file = dicom_files[0]
+        dcm_file = _select_pipeline_dcm(dicom_files)
+        if len(dicom_files) > 1:
+            log_info(f"[PIPELINE] AN {an}: arquivo selecionado para envio: {dcm_file.name}")
         age_value = ""
         try:
             ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True)
