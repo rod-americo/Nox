@@ -503,6 +503,7 @@ def _gravar_laudo_do_pipeline(an: str, destino_base: Path) -> bool:
         "--title", title,
         "--pipeline-response", str(pipeline_resp_file),
         "--payload-path", str(payload_path),
+        "--pendente",
     ]
     try:
         montar_proc = subprocess.run(montar_cmd, capture_output=True, text=True, check=False)
