@@ -456,10 +456,14 @@ def main(**kwargs):
         controller.stop()
         
         # Aguardar encerramento gracioso
-        if thread_hbr and thread_hbr.is_alive():
-            thread_hbr.join()
-        if thread_hac and thread_hac.is_alive():
-            thread_hac.join()
+        for t_name, t_obj in (("HBR", thread_hbr), ("HAC", thread_hac)):
+            if t_obj and t_obj.is_alive():
+                while t_obj.is_alive():
+                    try:
+                        t_obj.join(timeout=0.5)
+                    except KeyboardInterrupt:
+                        log_info(f"Interrupção adicional recebida durante join de {t_name}.")
+                        break
         log_info("Shutdown completo.")
 
 

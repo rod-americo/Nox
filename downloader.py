@@ -265,36 +265,39 @@ def _salvar_metadata_dicom(dcm_path: Path, output_json: Path):
         return False
 
 
-def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: dict) -> bool:
+def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: dict) -> tuple[bool, bool]:
     """
     Envia payload simplificado para a API de pipeline, quando configurada.
     Se a API não estiver configurada, não bloqueia o fluxo de download.
+    Retorna:
+    - ok: se o fluxo pode seguir sem erro
+    - has_response: se houve resposta da API gravada (pipeline_response.json)
     """
     if not getattr(config, "PIPELINE_ENABLED", True):
         log_info(f"[PIPELINE] AN {an}: envio desativado em config ([PIPELINE] enabled=false).")
-        return True
+        return True, False
 
     api_url = getattr(config, "PIPELINE_API_URL", "")
     if not api_url:
         log_aviso(f"[PIPELINE] AN {an}: api_url não configurada. Envio ignorado.")
-        return True
+        return True, False
 
     cockpit_meta = destino_base / "metadata_cockpit.json"
     if not cockpit_meta.exists():
         log_aviso(f"[PIPELINE] AN {an}: metadata_cockpit.json ausente. Envio ignorado.")
-        return True
+        return True, False
 
     try:
         cockpit = json.loads(cockpit_meta.read_text(encoding="utf-8"))
     except Exception as e:
         log_erro(f"[PIPELINE] AN {an}: falha lendo metadata_cockpit.json: {e}")
-        return not getattr(config, "PIPELINE_STRICT", False)
+        return (not getattr(config, "PIPELINE_STRICT", False), False)
 
     exame = str(cockpit.get("exame", "") or "")
     exame_norm = unicodedata.normalize("NFKD", exame).encode("ascii", "ignore").decode("ascii").upper()
     if ("TORAX" not in exame_norm) or ("PERFIL" in exame_norm):
         log_skip(f"[PIPELINE] AN {an}: exame '{exame}' fora do critério (requer TORAX e sem PERFIL).")
-        return True
+        return True, False
 
     request_format = getattr(config, "PIPELINE_REQUEST_FORMAT", "json")
     headers = {}
@@ -355,7 +358,7 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
         dicom_files = sorted(destino_base.glob("*.dcm"))
         if not dicom_files:
             log_erro(f"[PIPELINE] AN {an}: nenhum DICOM encontrado para envio multipart.")
-            return not getattr(config, "PIPELINE_STRICT", False)
+            return (not getattr(config, "PIPELINE_STRICT", False), False)
 
         dcm_file = _select_pipeline_dcm(dicom_files)
         if len(dicom_files) > 1:
@@ -379,7 +382,7 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
             log_debug(f"[PIPELINE] AN {an}: não foi possível extrair PatientAge: {e}")
         if not age_value:
             log_aviso(f"[PIPELINE] AN {an}: PatientAge ausente/indefinido no DICOM. Envio ignorado.")
-            return True
+            return True, False
 
         form_data = {
             "age": age_value,
@@ -410,10 +413,10 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
                 response_trace_file.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
                 resp.raise_for_status()
             log_ok(f"[PIPELINE] AN {an}: multipart enviado para API ({dcm_file.name}).")
-            return True
+            return True, True
         except Exception as e:
             log_erro(f"[PIPELINE] AN {an}: falha no envio multipart: {e}")
-            return not getattr(config, "PIPELINE_STRICT", False)
+            return (not getattr(config, "PIPELINE_STRICT", False), False)
 
     dicom_meta_files = sorted(destino_base.glob("metadado_*_dicom.json"))
     payload = {
@@ -449,10 +452,10 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
         response_trace_file.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
         resp.raise_for_status()
         log_ok(f"[PIPELINE] AN {an}: payload JSON enviado para API.")
-        return True
+        return True, True
     except Exception as e:
         log_erro(f"[PIPELINE] AN {an}: falha no envio JSON para API: {e}")
-        return not getattr(config, "PIPELINE_STRICT", False)
+        return (not getattr(config, "PIPELINE_STRICT", False), False)
 
 
 def _gravar_laudo_do_pipeline(an: str, destino_base: Path) -> bool:
@@ -795,16 +798,19 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
                     log_debug(f"Erro ao processar metadados de série: {e}")
 
         if config.STORAGE_MODE == "pipeline":
-            entrega_ok = _enviar_para_pipeline_api(an, servidor, destino_base, js)
+            entrega_ok, has_response = _enviar_para_pipeline_api(an, servidor, destino_base, js)
             if not entrega_ok:
                 js["status"] = "pipeline_erro"
                 _gravar_json(an, js)
                 return False
-            laudo_ok = _gravar_laudo_do_pipeline(an, destino_base)
-            if not laudo_ok:
-                js["status"] = "pipeline_laudo_erro"
-                _gravar_json(an, js)
-                return False
+            if has_response:
+                laudo_ok = _gravar_laudo_do_pipeline(an, destino_base)
+                if not laudo_ok:
+                    js["status"] = "pipeline_laudo_erro"
+                    _gravar_json(an, js)
+                    return False
+            else:
+                log_info(f"[PIPELINE] AN {an}: gravação de laudo pulada (sem resposta de API).")
 
         return True
 
