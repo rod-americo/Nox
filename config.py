@@ -305,6 +305,7 @@ PIPELINE_API_TOKEN = get("PIPELINE", "api_token", "").strip()
 PIPELINE_TIMEOUT = getint("PIPELINE", "timeout", 30)
 PIPELINE_STRICT = get("PIPELINE", "strict", "false").lower() == "true"
 PIPELINE_REQUEST_FORMAT = get("PIPELINE", "request_format", "json").strip().lower()
+PIPELINE_MODEL = get("PIPELINE", "model", "gpt-5").strip()
 PIPELINE_PROMPT = get("PIPELINE", "prompt", "").strip() or THORAX_XRAY_TRANSLATION_PROMPT
 PIPELINE_REPORT_TITLE = get("PIPELINE", "report_title", "RADIOGRAFIA DIGITAL DE TÓRAX NO LEITO").strip() or "RADIOGRAFIA DIGITAL DE TÓRAX NO LEITO"
 PIPELINE_AUTO_WRITE_REPORT = get("PIPELINE", "auto_write_report", "true").lower() == "true"

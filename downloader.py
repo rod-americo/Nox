@@ -387,6 +387,7 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
         form_data = {
             "age": age_value,
             "prompt": getattr(config, "PIPELINE_PROMPT", ""),
+            "model": getattr(config, "PIPELINE_MODEL", ""),
         }
         # Remove campos vazios para não enviar dado inútil
         form_data = {k: v for k, v in form_data.items() if v}
@@ -426,6 +427,7 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
         "patient_name": js.get("patient_name", ""),
         "study_desc": js.get("study_desc", ""),
         "modality": js.get("modality", ""),
+        "model": getattr(config, "PIPELINE_MODEL", ""),
         "dicom_dir": str(destino_base),
         "metadata_cockpit_path": str(cockpit_meta) if cockpit_meta.exists() else "",
         "dicom_metadata_paths": [str(p) for p in dicom_meta_files],
