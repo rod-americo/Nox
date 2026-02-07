@@ -126,14 +126,17 @@ PROGRESS_DIR = BASE_DIR / "progresso"
 # Diretório de logs
 LOG_DIR = BASE_DIR / "logs"
 
-# Diretório para payloads, sessão e demais dados da API Cockpit
+# Diretório para payloads e demais dados da API Cockpit
 DATA_DIR = BASE_DIR / "data"
+
+# Diretório para artefatos de autenticação
+AUTH_DIR = BASE_DIR / "auth"
 
 # Diretório para metadados individuais do Cockpit (subjson)
 COCKPIT_METADATA_DIR = DATA_DIR / "cockpit"
 
 # Garantir estrutura
-for d in [TMP_DIR, PROGRESS_DIR, DATA_DIR, LOG_DIR, COCKPIT_METADATA_DIR]:
+for d in [TMP_DIR, PROGRESS_DIR, DATA_DIR, AUTH_DIR, LOG_DIR, COCKPIT_METADATA_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 
@@ -212,8 +215,8 @@ URL_BASE = "https://cockpitweb.redeimpar.com.br:17000"
 URL_LOGIN      = f"{URL_BASE}/ris/laudo/user/login"
 URL_WORKLIST   = f"{URL_BASE}/ris/laudo/app/worklist"
 
-SESSION_FILE        = DATA_DIR / "session.json"
-LOCALSTORAGE_FILE   = DATA_DIR / "localstorage_monitor.json"
+SESSION_FILE        = AUTH_DIR / "session.json"
+LOCALSTORAGE_FILE   = AUTH_DIR / "localstorage_monitor.json"
 
 
 
