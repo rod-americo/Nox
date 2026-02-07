@@ -72,7 +72,7 @@ def render_markdown_bold_to_rtf(text: str) -> str:
         if start > last:
             out.append(escape_rtf(text[last:start]))
         inner = match.group(1) if match.group(1) is not None else match.group(2)
-        out.append(r"\line \b " + escape_rtf(inner) + r"\b0 ")
+        out.append(r"\b " + escape_rtf(inner) + r"\b0 ")
         last = end
     if last < len(text):
         out.append(escape_rtf(text[last:]))
@@ -181,10 +181,20 @@ def main() -> None:
 
     body_text = read_body(args)
     lines = body_text.splitlines()
-    if body_text.endswith(("\n", "\r")):
-        lines.append("")
-    if not lines:
-        lines = [""]
+    
+    # Filtra linhas com negrito/itálico (headers como **ACHADOS:**)
+    # Regra: "apague a linha que contém o que deveria levar negrito"
+    bold_pattern = re.compile(r"\*\*(.+?)\*\*|\*(.+?)\*")
+    filtered_lines = [line for line in lines if not bold_pattern.search(line)]
+
+    # Adiciona textos fixos no início e fim
+    final_lines = []
+    final_lines.append("Exame realizado no leito, apenas na incidência frontal.")
+    final_lines.extend(filtered_lines)
+    final_lines.append("Polos de eletrodo de monitorização na parede torácica.")
+
+    lines = final_lines
+
 
     paragraphs = build_paragraphs(lines)
     title_rtf = escape_rtf(args.title.upper())
