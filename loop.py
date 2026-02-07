@@ -62,10 +62,13 @@ import downloader
 # ============================================================
 
 class LoopController:
-    def __init__(self):
+    def __init__(self, success_limit: int | None = None):
         self._stop_event = threading.Event()
         self._pause_event = threading.Event()
         self._pause_event.set() # Inicialmente rodando (não pausado)
+        self._lock = threading.Lock()
+        self._success_count = 0
+        self._success_limit = success_limit if success_limit and success_limit > 0 else None
     
     def stop(self):
         """Sinaliza parada total do loop."""
@@ -80,6 +83,25 @@ class LoopController:
     def resume(self):
         """Retoma execução."""
         self._pause_event.set()
+
+    def set_success_limit(self, limit: int | None):
+        with self._lock:
+            self._success_limit = limit if limit and limit > 0 else None
+
+    def register_success(self) -> tuple[int, int | None, bool]:
+        """
+        Incrementa contador global de sucessos.
+        Retorna (count_atual, limite, atingiu_limite).
+        """
+        with self._lock:
+            self._success_count += 1
+            count = self._success_count
+            limit = self._success_limit
+            reached = bool(limit and count >= limit)
+            if reached:
+                self._stop_event.set()
+                self._pause_event.set()
+            return count, limit, reached
 
     @property
     def should_stop(self):
@@ -132,6 +154,13 @@ def worker_download(servidor: str, lista_ans: list, controller=None):
             
             if ok:
                 sucessos += 1
+                if controller:
+                    count, limit, reached = controller.register_success()
+                    if limit:
+                        log_info(f"[{servidor}] Sucesso global: {count}/{limit}")
+                    if reached:
+                        log_info(f"[{servidor}] Limite global de sucessos atingido ({count}/{limit}). Encerrando.")
+                        break
             else:
                 erros += 1
             
@@ -280,6 +309,7 @@ def main(**kwargs):
     opt_group.add_argument("--no-prepare", action="store_true", help="Pular etapa de preparação (Login/Sessão)")
     opt_group.add_argument("--metadado", action="store_true", help="Ativa exportação de metadados Cockpit/DICOM")
     opt_group.add_argument("--delay", type=float, default=0, help="Delay em segundos entre cada download de AN (ex: 1.5)")
+    opt_group.add_argument("--limit", type=int, default=0, help="Para após N downloads bem-sucedidos (global HBR+HAC)")
     opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
     
     # Se chamado via GUI, args podem vir vazios ou customizados
@@ -297,6 +327,8 @@ def main(**kwargs):
     if args.delay > 0:
         DOWNLOAD_DELAY = args.delay
         log_info(f"Delay entre downloads: {DOWNLOAD_DELAY}s")
+    if args.limit > 0:
+        log_info(f"Limite global de sucessos: {args.limit}")
     
     # Prioridade: 1. Argumentos CLI, 2. config.SCENARIOS
     if args.cenarios:
@@ -365,7 +397,9 @@ def main(**kwargs):
     INTERVALO = config.LOOP_INTERVAL
 
     # 2) LOOP INFINITO
-    controller = kwargs.get("controller") or LoopController()
+    controller = kwargs.get("controller") or LoopController(success_limit=args.limit)
+    if kwargs.get("controller"):
+        controller.set_success_limit(args.limit)
 
     try:
         while not controller.should_stop:
@@ -465,6 +499,19 @@ def main(**kwargs):
                         log_info(f"Interrupção adicional recebida durante join de {t_name}.")
                         break
         log_info("Shutdown completo.")
+        return
+
+    # Encerramento por stop programático (ex.: limite de sucessos)
+    if controller.should_stop:
+        for t_name, t_obj in (("HBR", thread_hbr), ("HAC", thread_hac)):
+            if t_obj and t_obj.is_alive():
+                while t_obj.is_alive():
+                    try:
+                        t_obj.join(timeout=0.5)
+                    except KeyboardInterrupt:
+                        log_info(f"Interrupção adicional recebida durante join de {t_name}.")
+                        break
+        log_info("Loop finalizado por condição de parada.")
 
 
 if __name__ == "__main__":
