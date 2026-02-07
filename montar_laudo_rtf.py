@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
@@ -48,7 +49,7 @@ def escape_rtf(text: str) -> str:
 
 def build_paragraphs(lines: Iterable[str]) -> str:
     paragraphs = [
-        PAR_TEMPLATE.format(text=escape_rtf(line))
+        PAR_TEMPLATE.format(text=render_markdown_bold_to_rtf(line))
         for line in lines
     ]
     if not paragraphs:
@@ -56,7 +57,63 @@ def build_paragraphs(lines: Iterable[str]) -> str:
     return "".join(paragraphs)
 
 
+def render_markdown_bold_to_rtf(text: str) -> str:
+    """
+    Converte *texto* ou **texto** para negrito RTF.
+    """
+    if not text:
+        return ""
+
+    out: list[str] = []
+    last = 0
+    pattern = re.compile(r"\*\*(.+?)\*\*|\*(.+?)\*")
+    for match in pattern.finditer(text):
+        start, end = match.span()
+        if start > last:
+            out.append(escape_rtf(text[last:start]))
+        inner = match.group(1) if match.group(1) is not None else match.group(2)
+        out.append(r"\b " + escape_rtf(inner) + r"\b0 ")
+        last = end
+    if last < len(text):
+        out.append(escape_rtf(text[last:]))
+    return "".join(out)
+
+
+def _read_final_report_from_pipeline(path: str) -> str:
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    return str(data.get("response", {}).get("body", {}).get("final_report", "") or "")
+
+
+def normalize_final_report_text(text: str) -> str:
+    """
+    Regras:
+    - Usar texto a partir de "Pulmões" (quando existir).
+    - Remover prefixo de marcador "- " no início de linha.
+    """
+    if not text:
+        return ""
+
+    idx = -1
+    for marker in ("**Pulmões", "*Pulmões", "Pulmões", "**Pulmoes", "*Pulmoes", "Pulmoes"):
+        idx = text.find(marker)
+        if idx != -1:
+            break
+    if idx != -1:
+        text = text[idx:]
+
+    normalized_lines: list[str] = []
+    for line in text.splitlines():
+        cleaned = line.lstrip()
+        if cleaned.startswith("- "):
+            cleaned = cleaned[2:]
+        normalized_lines.append(cleaned)
+    return "\n".join(normalized_lines).strip()
+
+
 def read_body(args: argparse.Namespace) -> str:
+    if args.pipeline_response:
+        final_report = _read_final_report_from_pipeline(args.pipeline_response)
+        return normalize_final_report_text(final_report)
     if args.body_file:
         return Path(args.body_file).read_text(encoding="utf-8")
     body = args.body or ""
@@ -99,6 +156,7 @@ def main() -> None:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--body-file", help="Arquivo texto com o corpo do laudo (linhas => parágrafos)")
     group.add_argument("--body", help="Corpo do laudo em uma string (use \\n para quebra de linha)")
+    group.add_argument("--pipeline-response", help="Arquivo pipeline_response.json para extrair response.body.final_report")
     parser.add_argument("--output", help="Salva o RTF gerado neste arquivo")
     parser.add_argument("--print-rtf", action="store_true", help="Imprime o RTF gerado no stdout (sem --output)")
     parser.add_argument("--plain-out", help="Escreve o texto puro do corpo neste arquivo")
