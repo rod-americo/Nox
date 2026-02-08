@@ -17,8 +17,7 @@ Uso:
 import json
 import sys
 from pathlib import Path
-import re
-from playwright.sync_api import sync_playwright, TimeoutError
+from playwright.sync_api import sync_playwright
 
 from datetime import datetime, timedelta
 import config
@@ -83,7 +82,7 @@ def preparar(cenarios: list[str]):
                     log_info(f"Screenshot de erro salvo: {p_path}")
                 except Exception as s_e:
                     log_erro(f"Erro ao salvar screenshot de falha: {s_e}")
-            raise e
+            raise
 
         # -------------------------------------------------------
         # TOKEN
@@ -170,14 +169,15 @@ def preparar(cenarios: list[str]):
                 log_info(f"Argumento '{Path(c).name}' identificado como arquivo. Pulando geração de payload (Legacy).")
                 continue
 
-            rule = SCENARIO_RULES.get(c)
+            c_norm = str(c).strip().upper()
+            rule = SCENARIO_RULES.get(c_norm)
             if not rule:
                 log_erro(f"Cenário desconhecido: {c}. Ignorando.")
                 continue
             
             try:
                 payload = gerar_payload(dt_ini, dt_fim, rule)
-                outfile = data_dir / f"payload_{c}.json"
+                outfile = data_dir / f"payload_{c_norm}.json"
                 outfile.write_text(
                     json.dumps(payload, indent=2, ensure_ascii=False),
                     encoding="utf-8"

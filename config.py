@@ -84,6 +84,30 @@ if not CONFIG_FILE.exists():
 
 parser.read(CONFIG_FILE, encoding="utf-8")
 
+def _read_dotenv(dotenv_path: Path) -> dict:
+    """
+    Parser simples de .env (KEY=VALUE), sem dependências externas.
+    """
+    env = {}
+    if not dotenv_path.exists():
+        return env
+    try:
+        for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if not key:
+                continue
+            if value and ((value[0] == value[-1]) and value[0] in {"'", '"'}):
+                value = value[1:-1]
+            env[key] = value
+    except Exception:
+        return {}
+    return env
+
 def get(section: str, key: str, default=None):
     """
     Lê valor de configuração do arquivo INI com fallback seguro.
@@ -110,7 +134,27 @@ def getint(section: str, key: str, default=None):
     Returns:
         int: Valor da configuração convertido para inteiro ou default
     """
-    return parser.getint(section, key, fallback=default)
+    try:
+        return parser.getint(section, key, fallback=default)
+    except (TypeError, ValueError):
+        return default
+
+def getbool(section: str, key: str, default: bool = False) -> bool:
+    """
+    Lê valor booleano de configuração com fallback seguro.
+    Aceita true/false, yes/no, on/off, 1/0 (case-insensitive).
+    """
+    try:
+        return parser.getboolean(section, key, fallback=default)
+    except (ValueError, TypeError):
+        return default
+
+def getlist(section: str, key: str, default: str = "") -> list[str]:
+    """
+    Lê lista CSV simples (ex: "A,B,C") e retorna tokens limpos em UPPER.
+    """
+    raw = get(section, key, default) or ""
+    return [t.strip().upper() for t in str(raw).split(",") if t.strip()]
 
 # ============================================================
 # Caminhos principais (Internos do Script)
@@ -227,11 +271,23 @@ LOCALSTORAGE_FILE   = AUTH_DIR / "localstorage_monitor.json"
 USUARIO = get("AUTH", "user", "")
 SENHA   = get("AUTH", "pass", "")
 
+_dotenv = _read_dotenv(BASE_DIR / ".env")
+
 # Se não estiver no INI, tenta var de ambiente (compatibilidade)
 if not USUARIO:
-    USUARIO = os.environ.get("USUARIO", "")
+    USUARIO = (
+        os.environ.get("USUARIO", "")
+        or os.environ.get("USER", "")
+        or _dotenv.get("USUARIO", "")
+        or _dotenv.get("USER", "")
+    )
 if not SENHA:
-    SENHA = os.environ.get("SENHA", "")
+    SENHA = (
+        os.environ.get("SENHA", "")
+        or os.environ.get("PASS", "")
+        or _dotenv.get("SENHA", "")
+        or _dotenv.get("PASS", "")
+    )
 
 if not USUARIO or not SENHA:
     print("[AVISO] Credenciais (USUARIO/SENHA) não encontradas em config.ini [AUTH] ou .env")
@@ -252,7 +308,7 @@ TITLE         = f"Assistente :: {_viewer_display} :: Mezo"
 _save_metadata = get("SETTINGS", "save_metadata", "")
 if _save_metadata == "":
     _save_metadata = get("SETTINGS", "metadado", "false")
-SAVE_METADATA = _save_metadata.lower() == "true"
+SAVE_METADATA = str(_save_metadata).strip().lower() == "true"
 
 # Criar diretório de saída DICOM (OUTPUT_DICOM_DIR já foi definido com detecção de SO)
 OUTPUT_DICOM_DIR.mkdir(parents=True, exist_ok=True)
@@ -294,21 +350,23 @@ else:
         STORAGE_MODE = "persistent"
 
 # Pipeline sempre exige metadados para empacotamento/integração
-if STORAGE_MODE == "pipeline":
+PIPELINE_ON_TRANSIENT = getbool("PIPELINE", "on_transient", False)
+if STORAGE_MODE == "pipeline" or (STORAGE_MODE == "transient" and PIPELINE_ON_TRANSIENT):
     SAVE_METADATA = True
 
 # Configuração de integração de pipeline (envio externo)
-PIPELINE_ENABLED = get("PIPELINE", "enabled", "true").lower() == "true"
+PIPELINE_ENABLED = getbool("PIPELINE", "enabled", True)
 PIPELINE_API_URL = get("PIPELINE", "api_url", "").strip()
 PIPELINE_API_TOKEN = get("PIPELINE", "api_token", "").strip()
 PIPELINE_TIMEOUT = getint("PIPELINE", "timeout", 30)
-PIPELINE_STRICT = get("PIPELINE", "strict", "false").lower() == "true"
+PIPELINE_STRICT = getbool("PIPELINE", "strict", False)
 PIPELINE_REQUEST_FORMAT = get("PIPELINE", "request_format", "json").strip().lower()
 PIPELINE_MODEL = get("PIPELINE", "model", "gpt-5").strip()
 PIPELINE_PROMPT = get("PIPELINE", "prompt", "").strip()
 PIPELINE_REPORT_TITLE = get("PIPELINE", "report_title", "RADIOGRAFIA DIGITAL DE TÓRAX NO LEITO").strip() or "RADIOGRAFIA DIGITAL DE TÓRAX NO LEITO"
-PIPELINE_AUTO_WRITE_REPORT = get("PIPELINE", "auto_write_report", "true").lower() == "true"
-PIPELINE_USE_REVISAR = get("PIPELINE", "use_revisar", "false").lower() == "true"
+PIPELINE_AUTO_WRITE_REPORT = getbool("PIPELINE", "auto_write_report", True)
+PIPELINE_INCLUDE_TERMS = getlist("PIPELINE", "include_terms", "TORAX")
+PIPELINE_EXCLUDE_TERMS = getlist("PIPELINE", "exclude_terms", "PERFIL")
 _pipeline_default_medico_id = get("PIPELINE", "default_medico_id", "").strip()
 if not _pipeline_default_medico_id:
     _pipeline_default_medico_id = str(os.environ.get("MEDICO_EXECUTANTE_ID", "")).strip()
@@ -317,7 +375,7 @@ if not _pipeline_default_medico_id:
 PIPELINE_DEFAULT_MEDICO_ID = int(_pipeline_default_medico_id) if _pipeline_default_medico_id.isdigit() else 165111
 
 # Flag para screenshots de debug (Playwright)
-DEBUG_SCREENSHOTS = False  # Ative para salvar screenshots de debug em data/debug/
+DEBUG_SCREENSHOTS = getbool("SETTINGS", "debug_screenshots", False)
 
 # === Compatibilidade com scripts antigos que importam SERVER/WADO_PORT direto ===
 SERVER    = SERVERS["HBR"]["server"]

@@ -49,10 +49,10 @@ import shutil
 import argparse
 import threading
 import subprocess
-from datetime import datetime
+from pathlib import Path
 
 import config
-from logger import log_info, log_erro
+from logger import log_info, log_erro, log_debug
 import fetcher
 import downloader
 
@@ -208,7 +208,8 @@ def limpar_antigos(dias=7):
             try:
                 if p.stat().st_mtime < limite:
                     p.unlink()
-            except: pass
+            except Exception as e:
+                log_debug(f"Erro limpando metadado antigo {p.name}: {e}")
 
 
 def verificar_retencao_exames():
@@ -292,7 +293,42 @@ def verificar_retencao_exames():
             for j in config.COCKPIT_METADATA_DIR.glob("*.json"):
                 if not (base / j.stem).exists():
                     try: j.unlink()
-                    except: pass
+                    except Exception as e:
+                        log_debug(f"Erro limpando metadado órfão {j.name}: {e}")
+
+
+def _resolve_scenarios(raw_inputs: list[str]) -> tuple[list[str], list[str]]:
+    """
+    Resolve entradas de cenário para:
+    - scenario_names: nomes lógicos (MONITOR, MONITOR_RX...) usados no prepare
+    - scenario_files: caminhos JSON de payload para fetcher
+    """
+    scenario_names: list[str] = []
+    scenario_files: list[str] = []
+
+    for item in raw_inputs:
+        token = str(item).strip()
+        if not token:
+            continue
+
+        p = Path(token)
+        if token.lower().endswith(".json") or p.exists():
+            scenario_files.append(str(p))
+            continue
+
+        normalized = token.upper().replace(".JSON", "")
+        scenario_names.append(normalized)
+        scenario_files.append(str(config.DATA_DIR / f"payload_{normalized}.json"))
+
+    return scenario_names, scenario_files
+
+
+def _validate_scenario_files(files: list[str]) -> list[str]:
+    missing = []
+    for f in files:
+        if not Path(f).exists():
+            missing.append(f)
+    return missing
 
 
 # ============================================================
@@ -310,85 +346,120 @@ def main(**kwargs):
     opt_group.add_argument("--metadado", action="store_true", help="Ativa exportação de metadados Cockpit/DICOM")
     opt_group.add_argument("--delay", type=float, default=0, help="Delay em segundos entre cada download de AN (ex: 1.5)")
     opt_group.add_argument("--limit", type=int, default=0, help="Para após N downloads bem-sucedidos (global HBR+HAC)")
+    opt_group.add_argument("--fetch-limit", type=int, default=0, help="Limite máximo de ANs por ciclo de fetch.")
+    opt_group.add_argument("--once", action="store_true", help="Executa apenas um ciclo de fetch+download e encerra.")
+    opt_group.add_argument("--storage-mode", choices=["transient", "persistent", "pipeline"], help="Override do storage_mode em runtime.")
+    pipe_toggle = opt_group.add_mutually_exclusive_group()
+    pipe_toggle.add_argument("--pipeline-enabled", action="store_true", help="Força pipeline habilitado em runtime.")
+    pipe_toggle.add_argument("--pipeline-disabled", action="store_true", help="Força pipeline desabilitado em runtime.")
+    opt_group.add_argument("--pipeline-on-transient", action="store_true", help="Permite pipeline também em storage_mode transient.")
+    opt_group.add_argument("--pipeline-api-url", help="Override da URL de API do pipeline.")
+    opt_group.add_argument("--pipeline-request-format", choices=["json", "multipart_single_file"], help="Formato de request para pipeline.")
+    opt_group.add_argument("--pipeline-strict", action="store_true", help="Falha AN quando pipeline/API falha.")
+    opt_group.add_argument("--pipeline-include", help="Critérios obrigatórios no nome do exame (CSV, ex: TORAX).")
+    opt_group.add_argument("--pipeline-exclude", help="Critérios de exclusão no nome do exame (CSV, ex: PERFIL).")
     opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
     
+    has_external_controller = bool(kwargs.get("controller"))
+
+    def fatal(msg: str, code: int = 1):
+        if has_external_controller:
+            raise RuntimeError(msg)
+        log_erro(msg)
+        sys.exit(code)
+
     # Se chamado via GUI, args podem vir vazios ou customizados
-    if "args" in kwargs:
-        args = parser.parse_args(kwargs["args"])
-    else:
-        args = parser.parse_args()
+    try:
+        if "args" in kwargs:
+            args = parser.parse_args(kwargs["args"])
+        else:
+            args = parser.parse_args()
+    except SystemExit:
+        if has_external_controller:
+            raise RuntimeError("Argumentos inválidos para loop.")
+        raise
     
     # Override config se flag presente
     if args.metadado:
         config.SAVE_METADATA = True
+    if args.delay < 0:
+        fatal("Parâmetro --delay não pode ser negativo.")
+    if args.limit < 0:
+        fatal("Parâmetro --limit não pode ser negativo.")
+    if args.fetch_limit < 0:
+        fatal("Parâmetro --fetch-limit não pode ser negativo.")
+
+    if args.storage_mode:
+        config.STORAGE_MODE = args.storage_mode
+    if args.pipeline_enabled:
+        config.PIPELINE_ENABLED = True
+    if args.pipeline_disabled:
+        config.PIPELINE_ENABLED = False
+    if args.pipeline_on_transient:
+        config.PIPELINE_ON_TRANSIENT = True
+    if args.pipeline_api_url:
+        config.PIPELINE_API_URL = args.pipeline_api_url.strip()
+    if args.pipeline_request_format:
+        config.PIPELINE_REQUEST_FORMAT = args.pipeline_request_format
+    if args.pipeline_strict:
+        config.PIPELINE_STRICT = True
+    if args.pipeline_include is not None:
+        config.PIPELINE_INCLUDE_TERMS = [t.strip().upper() for t in args.pipeline_include.split(",") if t.strip()]
+    if args.pipeline_exclude is not None:
+        config.PIPELINE_EXCLUDE_TERMS = [t.strip().upper() for t in args.pipeline_exclude.split(",") if t.strip()]
     
     # Seta delay global para threads
     global DOWNLOAD_DELAY
-    if args.delay > 0:
-        DOWNLOAD_DELAY = args.delay
+    DOWNLOAD_DELAY = args.delay if args.delay > 0 else 0
+    if DOWNLOAD_DELAY > 0:
         log_info(f"Delay entre downloads: {DOWNLOAD_DELAY}s")
     if args.limit > 0:
         log_info(f"Limite global de sucessos: {args.limit}")
-    
-    # Prioridade: 1. Argumentos CLI, 2. config.SCENARIOS
-    if args.cenarios:
-        final_scenarios = []
-        for item in args.cenarios:
-            # 1. Se for arquivo ou caminho existente, usa direto
-            if item.lower().endswith(".json") or os.path.exists(item):
-                final_scenarios.append(item)
-            else:
-                # 2. Se for nome simples, mapeia para data/payload_{NAME}.json
-                # (Assumindo que prepare.py gerou este arquivo anteriormente)
-                p = config.DATA_DIR / f"payload_{item}.json"
-                final_scenarios.append(str(p))
-        
-        cenarios = final_scenarios
-    else:
-        # Sem argumentos: usa config.SCENARIOS e converte para queries/*.json
-        from pathlib import Path
-        queries_dir = Path("queries").resolve()
-        cenarios = []
-        
-        for scenario_name in config.SCENARIOS:
-            # Remove extensão .json se já tiver
-            clean_name = scenario_name.replace(".json", "")
-            # Constrói caminho completo
-            json_path = queries_dir / f"{clean_name}.json"
-            cenarios.append(str(json_path))
+
+    fetch_limit = args.fetch_limit if args.fetch_limit > 0 else (args.limit if args.limit > 0 else None)
+    if fetch_limit:
+        log_info(f"Limite de fetch por ciclo: {fetch_limit}")
+
+    if config.STORAGE_MODE == "pipeline" or (config.STORAGE_MODE == "transient" and getattr(config, "PIPELINE_ON_TRANSIENT", False)):
+        config.SAVE_METADATA = True
+
+    raw_inputs = list(args.cenarios) if args.cenarios else list(config.SCENARIOS)
+    if not raw_inputs:
+        fatal("Nenhum cenário configurado. Informe cenários na CLI ou ajuste SETTINGS.scenarios no config.ini.")
+
+    scenario_names, cenarios = _resolve_scenarios(raw_inputs)
 
     log_info("=== ORQUESTRADOR NOX ===")
     log_info(f"Cenários: {', '.join(cenarios)}")
     log_info(f"Intervalo de check: {config.LOOP_INTERVAL}s")
+    log_info(f"Storage: {config.STORAGE_MODE} | Pipeline: {'ON' if config.PIPELINE_ENABLED else 'OFF'} | Pipeline em transient: {'ON' if getattr(config, 'PIPELINE_ON_TRANSIENT', False) else 'OFF'}")
 
     # Limpeza inicial
     limpar_antigos()
 
     # 1) PREPARE (Executa apenas uma vez)
-    # 1) PREPARE (Executa apenas uma vez)
     if not args.no_prepare:
         try:
-            # Invoca prepare.py como subprocesso para isolar contexto (Playwright/Async)
-            # NÃO passa argumentos para prepare.py (apenas login/sessão), 
-            # pois loop agora trabalha com Arquivos JSON já prontos.
             cmd = [sys.executable, "prepare.py"]
+            if scenario_names:
+                cmd.extend(scenario_names)
+            else:
+                cmd.append("--login-only")
             log_info(f"Executando processo de preparação (Login)...")
             
             subprocess.run(cmd, check=True)
             
         except subprocess.CalledProcessError as e:
-            log_erro(f"Falha fatal no prepare.py (Exit Code {e.returncode})")
-            # Se tiver controller (GUI), raise para ser tratado
-            if 'controller' in kwargs: 
-                raise RuntimeError(f"Prepare falhou com código {e.returncode}")
-            sys.exit(1)
+            fatal(f"Falha fatal no prepare.py (Exit Code {e.returncode})")
         except Exception as e:
-            log_erro(f"Erro ao invocar prepare.py: {e}")
-            if 'controller' in kwargs:
-                raise e
-            sys.exit(1)
+            fatal(f"Erro ao invocar prepare.py: {e}")
     else:
         log_info("Prepare pulado (--no-prepare).")
+
+    missing_files = _validate_scenario_files(cenarios)
+    if missing_files:
+        faltantes = ", ".join(missing_files)
+        fatal(f"Payload(s) não encontrado(s): {faltantes}")
 
     # Variáveis de controle de Threads
     thread_hbr = None
@@ -406,27 +477,23 @@ def main(**kwargs):
             # Check de pause
             if not controller.wait_if_paused():
                 break
+
             # Verificar se threads estão rodando
             hbr_ativo = thread_hbr and thread_hbr.is_alive()
             hac_ativo = thread_hac and thread_hac.is_alive()
 
             if hbr_ativo or hac_ativo:
-                # Se ocupado, aguarda brevemente e checa de novo
-                # status = []
-                # if hbr_ativo: status.append("HBR: Baixando")
-                # if hac_ativo: status.append("HAC: Baixando")
                 time.sleep(5)
                 continue
 
-            # --- SE CHEGOU AQUI, ESTÁ LIVRE ---
-            
             # Controle de tempo: respeitar intervalo mínimo entre checks
-            agora = time.time()
-            decorrido = agora - ultimo_check
-            if decorrido < INTERVALO:
+            if not args.once and ultimo_check > 0:
+                decorrido = time.time() - ultimo_check
+            else:
+                decorrido = INTERVALO
+            if decorrido < INTERVALO and not args.once:
                 espera_total = int(INTERVALO - decorrido)
                 if espera_total > 0:
-                    # Contagem regressiva visual
                     for i in range(espera_total, 0, -1):
                         if controller.should_stop:
                             break
@@ -437,16 +504,11 @@ def main(**kwargs):
                             pass
                         time.sleep(1)
                     
-                    # Se parou, limpa e sai
                     try:
                         sys.stdout.write("\r" + " " * 40 + "\r")  
                         sys.stdout.flush()
                     except (IOError, AttributeError):
                         pass
-            
-            # Correção para garantir que o tempo bateu
-            if (time.time() - ultimo_check) < INTERVALO:
-                 pass # Já esperamos o suficiente no loop acima
 
             ultimo_check = time.time()
             
@@ -457,10 +519,11 @@ def main(**kwargs):
             
             # 1. Fetch
             try:
-                # Agora usa fetch por ARQUIVOS, não mais por nomes de cenários
-                dados = fetcher.fetch_varios_arquivos(cenarios)
+                dados = fetcher.fetch_varios_arquivos(cenarios, limite=fetch_limit)
             except Exception as e:
                 log_erro(f"Erro no fetcher: {e}")
+                if args.once:
+                    break
                 log_info(f"Aguardando {config.LOOP_INTERVAL}s antes de tentar novamente...")
                 time.sleep(config.LOOP_INTERVAL)
                 continue
@@ -470,20 +533,27 @@ def main(**kwargs):
 
             if not lista_hbr and not lista_hac:
                 log_info(f"Nenhum exame encontrado.")
+                if args.once:
+                    break
                 continue
 
             log_info(f"Fila para processar: HBR={len(lista_hbr)}, HAC={len(lista_hac)}")
 
             # 2. Disparar Threads
             if lista_hbr:
-                thread_hbr = threading.Thread(target=worker_download, args=("HBR", lista_hbr, controller))
+                thread_hbr = threading.Thread(target=worker_download, args=("HBR", lista_hbr, controller), daemon=True)
                 thread_hbr.start()
 
             if lista_hac:
-                thread_hac = threading.Thread(target=worker_download, args=("HAC", lista_hac, controller))
+                thread_hac = threading.Thread(target=worker_download, args=("HAC", lista_hac, controller), daemon=True)
                 thread_hac.start()
-            
-            # Volta para o início do while, onde cairá no 'hbr_ativo or hac_ativo' e ficará esperando
+
+            if args.once:
+                for t in (thread_hbr, thread_hac):
+                    if t and t.is_alive():
+                        t.join()
+                log_info("Modo --once: ciclo único finalizado.")
+                break
 
     except KeyboardInterrupt:
         log_info("\nInterrupção (Ctrl+C). Parando threads...")

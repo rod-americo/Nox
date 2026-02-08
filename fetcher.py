@@ -17,14 +17,13 @@ Este módulo:
 
 import argparse
 import json
-import os
 import requests
 import time  # Importado globalmente para rate limiting
 # import urllib3  <-- Removido para evitar conflito de versão (usamos via requests)
 from pathlib import Path
-import time
 from math import ceil
 from datetime import datetime, timedelta
+from typing import Optional
 
 # Tenta importar tqdm para barra de progresso (apenas modo raw)
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
@@ -449,13 +448,29 @@ def extrair_an_servidor(registro):
         
     return None, None
 
-def fetch_cenario(nome_cenario: str) -> dict:
+def _count_total(resultado: dict) -> int:
+    return len(resultado.get("HBR", [])) + len(resultado.get("HAC", []))
+
+def salvar_ans_txt(resultado: dict, output_path: str):
+    """
+    Salva ANs consolidados em TXT, um por linha.
+    Ordem: HBR seguido de HAC.
+    """
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    linhas = resultado.get("HBR", []) + resultado.get("HAC", [])
+    path.write_text("\n".join(linhas) + ("\n" if linhas else ""), encoding="utf-8")
+    log_ok(f"ANs salvos em TXT: {path}")
+
+
+def fetch_cenario(nome_cenario: str, limite: Optional[int] = None) -> dict:
     resultado = {"HBR": [], "HAC": []}
     # log_info(f"Cenário {nome_cenario}: iniciando fetch…")
 
     try:
         s = carregar_session()
-    except:
+    except Exception as e:
+        log_erro(f"[{nome_cenario}] Falha ao carregar sessão: {e}")
         return resultado
         
     cookies = {c["name"]: c["value"] for c in s.get("cookies", [])}
@@ -493,8 +508,10 @@ def fetch_cenario(nome_cenario: str) -> dict:
 
     for r in dados:
         an, srv = extrair_an_servidor(r)
-        if an and srv:
+        if an and srv and an not in resultado[srv]:
             resultado[srv].append(an)
+            if limite and _count_total(resultado) >= limite:
+                return resultado
 
     pagina += 1
     while pagina <= total_paginas:
@@ -503,8 +520,10 @@ def fetch_cenario(nome_cenario: str) -> dict:
             break
         for r in dados:
             an, srv = extrair_an_servidor(r)
-            if an and srv:
+            if an and srv and an not in resultado[srv]:
                 resultado[srv].append(an)
+                if limite and _count_total(resultado) >= limite:
+                    return resultado
         
         # Log de progresso a cada 2 páginas ou se for a última
         if pagina % 2 == 0 or pagina == total_paginas:
@@ -516,15 +535,31 @@ def fetch_cenario(nome_cenario: str) -> dict:
     # log_info(f"Cenário {nome_cenario}: {len(resultado['HBR'])} HBR, {len(resultado['HAC'])} HAC.")
     return resultado
 
-def fetch_varios(cenarios: list[str]) -> dict:
+def fetch_varios(cenarios: list[str], limite: Optional[int] = None) -> dict:
     final = {"HBR": [], "HAC": []}
+
+    if limite and limite <= 0:
+        limite = None
+
     for c in cenarios:
-        parcial = fetch_cenario(c)
-        final["HBR"].extend(parcial["HBR"])
-        final["HAC"].extend(parcial["HAC"])
-    
-    final["HBR"] = list(dict.fromkeys(final["HBR"]))
-    final["HAC"] = list(dict.fromkeys(final["HAC"]))
+        restante = (limite - _count_total(final)) if limite else None
+        if restante is not None and restante <= 0:
+            break
+
+        parcial = fetch_cenario(c, limite=restante)
+
+        for an in parcial["HBR"]:
+            if an not in final["HBR"]:
+                final["HBR"].append(an)
+                if limite and _count_total(final) >= limite:
+                    return final
+
+        for an in parcial["HAC"]:
+            if an not in final["HAC"]:
+                final["HAC"].append(an)
+                if limite and _count_total(final) >= limite:
+                    return final
+
     return final
 
 def parse_br_time(s):
@@ -605,7 +640,7 @@ def ajustar_intervalo_datas(payload: dict):
             log_erro(f"Falha ao ajustar datas dinâmicas para {campo}: {e}")
 
 
-def fetch_from_file(file_path: str) -> dict:
+def fetch_from_file(file_path: str, limite: Optional[int] = None) -> dict:
     """
     Lê um arquivo JSON de payload, ajusta as datas para o momento atual (mantendo intervalo)
     e executa o fetch.
@@ -626,7 +661,8 @@ def fetch_from_file(file_path: str) -> dict:
 
     try:
         s = carregar_session()
-    except:
+    except Exception as e:
+        log_erro(f"[{p.name}] Falha ao carregar sessão: {e}")
         return resultado
 
     cookies = {c["name"]: c["value"] for c in s.get("cookies", [])}
@@ -649,8 +685,10 @@ def fetch_from_file(file_path: str) -> dict:
 
     for r in dados:
         an, srv = extrair_an_servidor(r)
-        if an and srv:
+        if an and srv and an not in resultado[srv]:
             resultado[srv].append(an)
+            if limite and _count_total(resultado) >= limite:
+                return resultado
 
     pagina += 1
     while pagina <= total_paginas:
@@ -659,8 +697,10 @@ def fetch_from_file(file_path: str) -> dict:
             break
         for r in dados:
             an, srv = extrair_an_servidor(r)
-            if an and srv:
+            if an and srv and an not in resultado[srv]:
                 resultado[srv].append(an)
+                if limite and _count_total(resultado) >= limite:
+                    return resultado
         
         if pagina % 2 == 0 or pagina == total_paginas:
              total_atual = len(resultado['HBR']) + len(resultado['HAC'])
@@ -670,18 +710,32 @@ def fetch_from_file(file_path: str) -> dict:
 
     return resultado
 
-def fetch_varios_arquivos(files: list[str]) -> dict:
+def fetch_varios_arquivos(files: list[str], limite: Optional[int] = None) -> dict:
     final = {"HBR": [], "HAC": []}
     log_info(f"Processando {len(files)} arquivo(s) de payload...")
+
+    if limite and limite <= 0:
+        limite = None
+
     for i, f in enumerate(files, 1):
         log_info(f"[{i}/{len(files)}] Processando arquivo: {Path(f).name}")
-        parcial = fetch_from_file(f)
-        final["HBR"].extend(parcial["HBR"])
-        final["HAC"].extend(parcial["HAC"])
+        restante = (limite - _count_total(final)) if limite else None
+        if restante is not None and restante <= 0:
+            break
+
+        parcial = fetch_from_file(f, limite=restante)
+        for an in parcial["HBR"]:
+            if an not in final["HBR"]:
+                final["HBR"].append(an)
+                if limite and _count_total(final) >= limite:
+                    return final
+        for an in parcial["HAC"]:
+            if an not in final["HAC"]:
+                final["HAC"].append(an)
+                if limite and _count_total(final) >= limite:
+                    return final
         log_info(f"[{i}/{len(files)}] Resultado: HBR={len(parcial['HBR'])}, HAC={len(parcial['HAC'])}")
-    
-    final["HBR"] = list(dict.fromkeys(final["HBR"]))
-    final["HAC"] = list(dict.fromkeys(final["HAC"]))
+
     return final
 
 # ============================================================
@@ -716,6 +770,13 @@ def main():
     opt_group.add_argument("--an-file", type=str, help="Caminho de arquivo JSON contendo lista de ANs")
     opt_group.add_argument("--no-tqdm", action="store_true", help="Desativa barra de progresso (útil para logs)")
     opt_group.add_argument("--metadado", action="store_true", help="Salva metadados Cockpit/DICOM")
+    opt_group.add_argument("--limit", type=int, help="Limite máximo de ANs no modo padrão (Nox).")
+    opt_group.add_argument(
+        "--output-txt",
+        nargs="?",
+        const=str(DATA_DIR / "ans_list.txt"),
+        help="Salva lista consolidada de ANs em TXT (um por linha). Opcionalmente informe caminho.",
+    )
     opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
 
     # Filtros de Origem
@@ -728,6 +789,9 @@ def main():
     # Override config se flag presente
     if args.metadado:
         config.SAVE_METADATA = True
+
+    if args.limit is not None and args.limit <= 0:
+        parser.error("--limit deve ser maior que zero")
 
     # Validação: ou tem cenários ou tem AN (arg ou file)
     if not args.cenarios and not args.an and not args.an_file:
@@ -771,15 +835,37 @@ def main():
                 else:
                     nomes_legados.append(item)
             
+            dados_final = {"HBR": [], "HAC": []}
+
+            def _merge_limit(dst: dict, src: dict, limit: Optional[int]):
+                for an in src.get("HBR", []):
+                    if an not in dst["HBR"]:
+                        dst["HBR"].append(an)
+                        if limit and _count_total(dst) >= limit:
+                            return
+                for an in src.get("HAC", []):
+                    if an not in dst["HAC"]:
+                        dst["HAC"].append(an)
+                        if limit and _count_total(dst) >= limit:
+                            return
+
             # 1. Processa Arquivos JSON (Moderno)
             if arquivos_json:
-                fetch_varios_arquivos(arquivos_json)
+                parcial = fetch_varios_arquivos(arquivos_json, limite=args.limit)
+                _merge_limit(dados_final, parcial, args.limit)
                 
             # 2. Processa Nomes Legados (Compatibilidade)
-            if nomes_legados:
+            restante = (args.limit - _count_total(dados_final)) if args.limit else None
+            if nomes_legados and (restante is None or restante > 0):
                 # log_info(f"Processando cenários legados: {nomes_legados}")
-                fetch_varios(nomes_legados)
+                parcial = fetch_varios(nomes_legados, limite=restante)
+                _merge_limit(dados_final, parcial, args.limit)
                 
+            total_hbr = len(dados_final["HBR"])
+            total_hac = len(dados_final["HAC"])
+            log_info(f"Total consolidado: {total_hbr} HBR, {total_hac} HAC")
+            if args.output_txt:
+                salvar_ans_txt(dados_final, args.output_txt)
             return
 
         # --- ROTA BUSCA POR AN ---
@@ -891,7 +977,7 @@ def main():
             return
 
         # --- ROTA NOX (Padrão) ---
-        dados = fetch_varios(args.cenarios)
+        dados = fetch_varios(args.cenarios, limite=args.limit)
         
         if args.json:
             print(json.dumps(dados, indent=2, ensure_ascii=False))

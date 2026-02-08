@@ -14,9 +14,9 @@ O XML é salvo temporariamente em TMP_DIR e apagado após o parsing.
 
 import sys
 import json
+import time
 import requests
 import xml.etree.ElementTree as ET
-from pathlib import Path
 
 import config
 from logger import log_info, log_erro
@@ -39,15 +39,19 @@ def _baixar_xml(an: str, servidor: str) -> bytes:
     )
 
     log_info(f"WADO-Query AN {an} ({servidor})...")
-    r = requests.get(url, timeout=15)
-
-    if r.status_code != 200:
-        raise RuntimeError(f"Falha HTTP {r.status_code}")
-
-    if len(r.content.strip()) == 0:
-        raise RuntimeError("Servidor retornou resposta vazia (ou apenas espaços).")
-
-    return r.content
+    last_err = None
+    for tentativa in range(1, 3):
+        try:
+            r = requests.get(url, timeout=(5, 15))
+            r.raise_for_status()
+            if len(r.content.strip()) == 0:
+                raise RuntimeError("Servidor retornou resposta vazia (ou apenas espaços).")
+            return r.content
+        except Exception as e:
+            last_err = e
+            if tentativa == 1:
+                time.sleep(0.5)
+    raise RuntimeError(f"Falha na query WADO para {an}: {last_err}")
 
 
 # ============================================================
@@ -86,9 +90,13 @@ def _parse_xml(xml_bytes: bytes, an: str) -> dict:
             
         raise RuntimeError(f"XML inválido ou corrompido: {e}. [{tipo}]: {sample}")
 
-    ns = {"w": root.tag.split("}")[0].strip("{")}
-
-    study_el = root.find(".//w:Study", ns)
+    has_ns = "}" in root.tag
+    if has_ns:
+        ns = {"w": root.tag.split("}")[0].strip("{")}
+        study_el = root.find(".//w:Study", ns)
+    else:
+        ns = None
+        study_el = root.find(".//Study")
     if study_el is None:
         # Se não achou Study, pode ser XML de erro do servidor
         # Tenta pegar tudo texto do root
@@ -104,13 +112,15 @@ def _parse_xml(xml_bytes: bytes, an: str) -> dict:
     series_list = []
     total_instances = 0
 
-    for s in study_el.findall("w:Series", ns):
+    series_nodes = study_el.findall("w:Series", ns) if has_ns else study_el.findall("Series")
+    for s in series_nodes:
         series_uid = s.attrib.get("SeriesInstanceUID", "")
         if not series_uid:
             continue
 
         sop_list = []
-        for inst in s.findall("w:Instance", ns):
+        instance_nodes = s.findall("w:Instance", ns) if has_ns else s.findall("Instance")
+        for inst in instance_nodes:
             sop = inst.attrib.get("SOPInstanceUID", "")
             if sop:
                 sop_list.append(sop)

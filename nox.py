@@ -552,18 +552,24 @@ class NoxApp(ctk.CTk):
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="Nox Assistant - Monitoramento de Downloads DICOM")
+    parser = argparse.ArgumentParser(description="Nox Assistant - Monitoramento de Downloads DICOM", add_help=False)
+    arg_group = parser.add_argument_group("Argumentos")
+    opt_group = parser.add_argument_group("Opções")
     
-    group = parser.add_mutually_exclusive_group()
+    group = opt_group.add_mutually_exclusive_group()
     group.add_argument("--gui", "-g", action="store_true", help="Executa com Interface Gráfica (Padrão)")
     group.add_argument("--cli", "-c", action="store_true", help="Executa em modo Linha de Comando")
     
-    parser.add_argument("--no-prepare", action="store_true", help="Pular etapa de preparação")
-    parser.add_argument("cenarios", metavar="CENARIOS", nargs="*", help="Cenários específicos")
+    opt_group.add_argument("--no-prepare", action="store_true", help="Pular etapa de preparação")
+    opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
+    arg_group.add_argument("cenarios", metavar="CENARIOS", nargs="*", help="Cenários específicos")
     
-    args = parser.parse_args()
+    args, extra_loop_args = parser.parse_known_args()
     
     cenarios = args.cenarios if args.cenarios else None
+
+    if extra_loop_args and not args.cli:
+        parser.error(f"Argumentos não reconhecidos para modo GUI: {' '.join(extra_loop_args)}")
 
     if args.cli:
         print("--- INICIANDO O NOX (CLI) ---")
@@ -571,6 +577,7 @@ if __name__ == "__main__":
             loop_args = []
             if cenarios: loop_args.extend(cenarios)
             if args.no_prepare: loop_args.append("--no-prepare")
+            loop_args.extend(extra_loop_args)
             loop.main(args=loop_args)
         except KeyboardInterrupt:
             print("\nInterrompido pelo usuário.")

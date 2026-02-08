@@ -149,6 +149,16 @@ def _iniciar_json(an: str, servidor: str, meta: dict) -> dict:
     _gravar_json(an, base)
     return base
 
+def _pipeline_ativo_no_modo_atual() -> bool:
+    """
+    Pipeline pode rodar em:
+    - storage_mode = pipeline
+    - storage_mode = transient + PIPELINE_ON_TRANSIENT=true
+    """
+    return (config.STORAGE_MODE == "pipeline") or (
+        config.STORAGE_MODE == "transient" and getattr(config, "PIPELINE_ON_TRANSIENT", False)
+    )
+
 
 # ============================================================
 # curl (agora requests)
@@ -199,7 +209,12 @@ def _baixar_sop(url: str, destino: Path, extract_metadata: bool = False, verbose
                 if config.STORAGE_MODE == "transient":
                     if config.OSIRIX_INCOMING and config.OSIRIX_INCOMING.exists():
                         try:
-                            shutil.move(str(destino), str(config.OSIRIX_INCOMING / destino.name))
+                            incoming_target = config.OSIRIX_INCOMING / destino.name
+                            if _pipeline_ativo_no_modo_atual():
+                                # transient + pipeline: entrega ao viewer sem perder a cópia local temporária
+                                shutil.copy2(destino, incoming_target)
+                            else:
+                                shutil.move(str(destino), str(incoming_target))
                         except Exception as e_move:
                             if verbose_error: log_erro(f"Falha ao mover para OsiriX: {e_move}")
                             # Se não conseguiu mover, falha o processo? Ou deixa no Temp?
@@ -297,8 +312,14 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
 
     exame = str(cockpit.get("exame", "") or "")
     exame_norm = unicodedata.normalize("NFKD", exame).encode("ascii", "ignore").decode("ascii").upper()
-    if ("TORAX" not in exame_norm) or ("PERFIL" in exame_norm):
-        log_skip(f"[PIPELINE] AN {an}: exame '{exame}' fora do critério (requer TORAX e sem PERFIL).")
+    include_terms = [t.strip().upper() for t in getattr(config, "PIPELINE_INCLUDE_TERMS", ["TORAX"]) if str(t).strip()]
+    exclude_terms = [t.strip().upper() for t in getattr(config, "PIPELINE_EXCLUDE_TERMS", ["PERFIL"]) if str(t).strip()]
+
+    if include_terms and not all(term in exame_norm for term in include_terms):
+        log_skip(f"[PIPELINE] AN {an}: exame '{exame}' fora do critério de inclusão ({', '.join(include_terms)}).")
+        return True, False
+    if exclude_terms and any(term in exame_norm for term in exclude_terms):
+        log_skip(f"[PIPELINE] AN {an}: exame '{exame}' bloqueado por exclusão ({', '.join(exclude_terms)}).")
         return True, False
 
     request_format = getattr(config, "PIPELINE_REQUEST_FORMAT", "json")
@@ -373,13 +394,13 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
                 age_num = int(raw_age[:3])
                 age_unit = raw_age[3].upper()
                 if age_unit == "Y":
-                    age_value = f"{age_num}-years-old"
+                    age_value = f"{age_num} year old"
                 elif age_unit == "M":
-                    age_value = f"{age_num}-months-old"
+                    age_value = f"{age_num} month old"
                 elif age_unit == "W":
-                    age_value = f"{age_num}-weeks-old"
+                    age_value = f"{age_num} week old"
                 elif age_unit == "D":
-                    age_value = f"{age_num}-days-old"
+                    age_value = f"{age_num} day old"
         except Exception as e:
             log_debug(f"[PIPELINE] AN {an}: não foi possível extrair PatientAge: {e}")
         if not age_value:
@@ -388,6 +409,7 @@ def _enviar_para_pipeline_api(an: str, servidor: str, destino_base: Path, js: di
 
         form_data = {
             "age": age_value,
+            "identificador": str(an),
         }
         # Remove campos vazios para não enviar dado inútil
         form_data = {k: v for k, v in form_data.items() if v}
@@ -524,8 +546,6 @@ def _gravar_laudo_do_pipeline(an: str, destino_base: Path) -> bool:
         str(id_laudo),
         "--payload-file", str(payload_path),
     ]
-    if getattr(config, "PIPELINE_USE_REVISAR", False):
-        gravar_cmd.append("--revisar")
 
     try:
         gravar_proc = subprocess.run(gravar_cmd, capture_output=True, text=True, check=False)
@@ -752,15 +772,6 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
         })
         _gravar_json(an, js)
         
-        # Limpeza do diretório TMP se estiver vazio ou sobrar lixo (Transient)
-        if config.STORAGE_MODE == "transient":
-            try:
-                # Remove a pasta do AN em tmp se estiver vazia (shutil.move removeu arquivos)
-                # Se sobrar algo (erros), rmtree limpa.
-                if destino_base.exists():
-                    shutil.rmtree(destino_base)
-            except: pass
-
         log_finalizado(f"[{servidor}] AN {an} — completo ({vel_final:.1f} img/s)")
         
         # ------------------------------------------------------------
@@ -773,6 +784,8 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
                 # Se houver metadado no cache, move para a pasta final (evita duplicata)
                 if config.STORAGE_MODE in ["persistent", "pipeline"]:
                     shutil.move(str(meta_origem), str(destino_base / "metadata_cockpit.json"))
+                elif config.STORAGE_MODE == "transient" and _pipeline_ativo_no_modo_atual():
+                    shutil.copy2(str(meta_origem), str(destino_base / "metadata_cockpit.json"))
             except Exception as e:
                 log_debug(f"Erro ao mover metadados cockpit para pasta final: {e}")
 
@@ -800,7 +813,7 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
                 except Exception as e:
                     log_debug(f"Erro ao processar metadados de série: {e}")
 
-        if config.STORAGE_MODE == "pipeline":
+        if _pipeline_ativo_no_modo_atual():
             entrega_ok, has_response = _enviar_para_pipeline_api(an, servidor, destino_base, js)
             if not entrega_ok:
                 js["status"] = "pipeline_erro"
@@ -815,6 +828,12 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
             else:
                 log_info(f"[PIPELINE] AN {an}: gravação de laudo pulada (sem resposta de API).")
 
+        if config.STORAGE_MODE == "transient" and destino_base.exists():
+            try:
+                shutil.rmtree(destino_base)
+            except Exception as e:
+                log_debug(f"Erro limpando temporário de {an}: {e}")
+
         return True
 
     # ------------------------------------------------------------
@@ -828,8 +847,10 @@ def baixar_an(servidor: str, an: str, mostrar_progresso: bool = True) -> bool:
 
     # Se mode transient, limpar se sobrou lixo (parcial ou vazio)
     if config.STORAGE_MODE == "transient" and destino_base.exists():
-         try: shutil.rmtree(destino_base)
-         except: pass
+         try:
+             shutil.rmtree(destino_base)
+         except Exception as e:
+             log_debug(f"Erro limpando temporário parcial de {an}: {e}")
 
     return False
 

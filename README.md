@@ -37,6 +37,9 @@
 
 Todas as preferências são gerenciadas no arquivo `config.ini`.
 
+Credenciais também podem ser fornecidas por ambiente (`USER`/`PASS` ou `USUARIO`/`SENHA`) e por arquivo `.env` na raiz do projeto.
+Para compatibilidade, `[AUTH]` no `config.ini` continua tendo prioridade.
+
 ```ini
 [AUTH]
 user = SEU_USUARIO
@@ -89,23 +92,27 @@ timeout = 30
 strict = false
 # request_format: json (default) ou multipart_single_file
 request_format = multipart_single_file
-# usado no envio multipart (campo prompt); se vazio usa prompt_translation.py
-prompt =
+# permite pipeline também no modo transient
+on_transient = false
+# critérios de elegibilidade do exame (CSV, comparado em uppercase)
+include_terms = TORAX
+exclude_terms = PERFIL
 # grava automaticamente o laudo após resposta da API
 auto_write_report = true
-# usa endpoint de revisão (laudarrevisar) ao gravar
-use_revisar = false
 # fallback para médico executante quando metadata_cockpit não tiver id
 default_medico_id =
 ```
 
 Regras atuais do modo `pipeline`:
-- Envia para API apenas quando `metadata_cockpit.json.exame` contém `TORAX` e não contém `PERFIL`.
-- A idade é extraída do DICOM (`PatientAge`, ex: `093Y` -> `93-years-old`).
+- Envia para API apenas quando o exame passa no filtro `include_terms` e não bate em `exclude_terms`.
+- A idade é extraída do DICOM (`PatientAge`, ex: `045Y` -> `45 year old`).
 - Para envio multipart com múltiplos DICOMs, usa o primeiro arquivo da 2ª série; se houver apenas 1 série, usa o 2º arquivo.
+- Em `multipart_single_file`, o formulário enviado é: `file`, `age` e `identificador=<AN>`.
 - A resposta da API é gravada integralmente em `/Users/rodrigo/Nox/data/DICOM/<AN>/pipeline_response.json` (ou no `persistent_dir` configurado).
 - Após resposta com sucesso, o laudo é montado e gravado automaticamente usando `id_exame_pedido` do `metadata_cockpit.json`.
 - O médico executante é lido de `PIPELINE.default_medico_id` (ou env `MEDICO_EXECUTANTE_ID`).
+- O envio para Cockpit usa apenas o endpoint padrão `laudar` (revisão desativada por segurança).
+- Por segurança, o payload de laudo usa `pendente=true` como padrão.
 
 ---
 
@@ -172,12 +179,13 @@ python nox.py --cli
 - `--cli`, `-c`: Executa em modo linha de comando
 - `--no-prepare`: Pula etapa de preparação (Playwright/Login)
 - `cenarios`: Lista de cenários para monitorar.
+- No modo `--cli`, argumentos extras são repassados para `loop.py` (ex.: `--once`, `--fetch-limit`, `--pipeline-on-transient`).
 
 #### `loop.py` — Modo Headless/Automação
 
-**Descrição**: Orquestrador principal sem interface gráfica. Suporta argumentos com lógica híbrida:
-1.  **Nome Simples** (ex: `MONITOR`): Busca payload em `data/payload_MONITOR.json`.
-2.  **Arquivo JSON** (ex: `queries/meu_teste.json`): Usa o arquivo especificado.
+**Descrição**: Orquestrador principal sem interface gráfica. Suporta:
+1.  **Nome Simples** (ex: `MONITOR`): resolve para `data/payload_MONITOR.json`.
+2.  **Arquivo JSON** (ex: `queries/meu_teste.json`): usa o arquivo informado.
 
 **Uso**:
 ```bash
@@ -189,6 +197,15 @@ python loop.py MONITOR
 
 # Usa um arquivo de query específico
 python loop.py queries/plantao.json
+
+# Executa um único ciclo (fetch + download) e encerra
+python loop.py MONITOR --once
+
+# Limita a coleta para 100 ANs por ciclo
+python loop.py MONITOR --fetch-limit 100
+
+# transient + pipeline via CLI
+python loop.py MONITOR --storage-mode transient --pipeline-enabled --pipeline-on-transient
 ```
 
 #### `fetcher.py` — Busca de Exames via API
@@ -200,8 +217,11 @@ python loop.py queries/plantao.json
 # Buscar por cenário pré-definido
 python fetcher.py MONITOR
 
-# Buscar usando arquivo JSON
-python fetcher.py --file queries/plantao.json
+# Buscar usando arquivo JSON (argumento posicional)
+python fetcher.py queries/plantao.json
+
+# Limitar a coleta e salvar TXT (1 AN por linha)
+python fetcher.py MONITOR MONITOR_RX --limit 100 --output-txt
 
 # Modo Raw (Munin) - Salva JSON completo
 python fetcher.py --raw MONITOR --inicio 2023-01-01 --fim 2023-01-02
