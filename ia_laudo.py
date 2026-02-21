@@ -292,12 +292,13 @@ def main():
         log_info(f"Encontrado MATCH em {an} (Servidor: {srv}) -> {nm_exame}")
         sucesso = processar_exame(an, srv)
         
-        # Independente de sucesso ou falha na API, registramos para não ficar repetindo
-        # os mesmos ANs quebrados a cada run.
-        historico.append(an)
-        historico_file.write_text(json.dumps(historico, indent=2), encoding="utf-8")
-        
         if sucesso:
+             # Só gravamos no histórico interno caso o envio para a API tenha
+             # dado certo. Erros (como timeout) farão com que ele tente de novo
+             # na próxima rodada do cron/script.
+             historico.append(an)
+             historico_file.write_text(json.dumps(historico, indent=2), encoding="utf-8")
+             
              processados_com_sucesso += 1
              if args.one:
                   log_ok("Execução parando porque flag --one foi ativada e 1 sucesso foi alcançado.")
