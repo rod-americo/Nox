@@ -190,13 +190,7 @@ def main() -> None:
     bold_pattern = re.compile(r"\*\*(.+?)\*\*|\*(.+?)\*")
     filtered_lines = [line for line in lines if not bold_pattern.search(line)]
 
-    # Adiciona textos fixos no início e fim
-    final_lines = []
-    final_lines.append("Exame realizado no leito, apenas na incidência frontal.")
-    final_lines.extend(filtered_lines)
-    final_lines.append("Polos de eletrodo de monitorização na parede torácica.")
-
-    lines = final_lines
+    lines = filtered_lines
 
 
     paragraphs = build_paragraphs(lines)
