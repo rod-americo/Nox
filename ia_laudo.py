@@ -262,7 +262,18 @@ def main():
     query_keyword = remover_acentos(args.keyword)
     processados_com_sucesso = 0
     
+    historico_file = config.BASE_DIR / ".ia_laudo_historico.json"
+    historico = []
+    if historico_file.exists():
+        try:
+            historico = json.loads(historico_file.read_text(encoding="utf-8"))
+        except: pass
+        
     for an, srv in todos_an_srv:
+        if an in historico:
+            log_info(f"[{an}] Pulando porque já consta no histórico de execuções (.ia_laudo_historico.json)")
+            continue
+            
         meta_file = config.COCKPIT_METADATA_DIR / f"{an}.json"
         
         if not meta_file.exists():
@@ -280,6 +291,11 @@ def main():
             
         log_info(f"Encontrado MATCH em {an} (Servidor: {srv}) -> {nm_exame}")
         sucesso = processar_exame(an, srv)
+        
+        # Independente de sucesso ou falha na API, registramos para não ficar repetindo
+        # os mesmos ANs quebrados a cada run.
+        historico.append(an)
+        historico_file.write_text(json.dumps(historico, indent=2), encoding="utf-8")
         
         if sucesso:
              processados_com_sucesso += 1

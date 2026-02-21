@@ -23,12 +23,12 @@
     "S"
   ],
   "dt_imagem": {
-    "dt_inicio": "2026-02-01T00:00:00.000Z",
-    "dt_fim": "2026-02-21T23:59:59.000Z"
+    "dt_inicio": "2026-01-20T00:00:00.000Z",
+    "dt_fim": "2026-01-21T23:59:59.000Z"
   },
   "nm_periodo_imagem": {
-    "value": "outro",
-    "label": "Outro"
+    "value": "ontemhoje",
+    "label": "Ontem e hoje"
   },
   "nm_periodo_pedido": {
     "value": "",
