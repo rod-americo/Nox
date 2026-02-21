@@ -22,13 +22,13 @@
   "imagem": [
     "S"
   ],
-  "dt_imagem": {
-    "dt_inicio": "2026-01-20T00:00:00.000Z",
-    "dt_fim": "2026-01-21T23:59:59.000Z"
-  },
   "nm_periodo_imagem": {
-    "value": "ontemhoje",
-    "label": "Ontem e hoje"
+    "value": "doisMeses",
+    "label": "Há 2 Meses"
+  },
+  "dt_imagem": {
+    "dt_inicio": "2025-12-06T00:00:00.000Z",
+    "dt_fim": "2026-02-06T23:59:59.000Z"
   },
   "nm_periodo_pedido": {
     "value": "",
