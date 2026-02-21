@@ -649,6 +649,7 @@ def main():
     # 3. Caso 'python downloader.py SERVER AN' -> Single
     if args.servidor and args.an:
         servidor = args.servidor.upper()
+        an = args.an
         # Se servidor for um AN (usuário inverteu ou omitiu server?), melhor validar.
         # Mas assumindo uso correto:
         if servidor not in config.SERVERS:
@@ -656,7 +657,7 @@ def main():
             log_erro(f"Servidor '{servidor}' inválido. Use HBR ou HAC.")
             return
         
-                ok = baixar_an(servidor, an, mostrar_progresso=not args.no_progress)
+        ok = baixar_an(servidor, an, mostrar_progresso=not args.no_progress)
         if ok:
             import pipeline
             import config
@@ -666,11 +667,11 @@ def main():
             pipe_ok, final_status = pipeline.processar_exame(an, servidor, des_cli, cli_js)
             if final_status != "completo":
                 cli_js["status"] = final_status
-                    _gravar_json(an, cli_js)
+                _gravar_json(an, cli_js)
             if not pipe_ok: ok = False
             if config.STORAGE_MODE == "transient" and des_cli.exists():
-                    try: shutil.rmtree(des_cli)
-                    except: pass
+                try: shutil.rmtree(des_cli)
+                except: pass
 
 
 if __name__ == "__main__":
