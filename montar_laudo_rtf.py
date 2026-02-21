@@ -185,13 +185,30 @@ def main() -> None:
     body_text = read_body(args)
     lines = body_text.splitlines()
     
-    # Filtra linhas com negrito/itálico (headers como **ACHADOS:**)
-    # Regra: "apague a linha que contém o que deveria levar negrito"
-    bold_pattern = re.compile(r"\*\*(.+?)\*\*|\*(.+?)\*")
-    filtered_lines = [line for line in lines if not bold_pattern.search(line)]
+    processed_lines = []
+    for line in lines:
+        if not line.strip():
+            processed_lines.append(line)
+            continue
+            
+        if ":" in line:
+            parts = line.split(":", 1)
+            header = parts[0].strip()
+            # Remove markdown caso o modelo já tenha gerado, permitindo que a gente recrie lindamente
+            header_clean = header.replace("*", "").strip()
+            
+            rest = parts[1].lstrip()
+            if rest:
+                rest = rest[0].lower() + rest[1:]
+                
+            line = f"**{header_clean}:** {rest}"
+            
+        processed_lines.append(line)
 
-    lines = filtered_lines
+    lines = processed_lines
 
+    # Atualiza o texto plano para enviar na API também refletindo as mudanças (sem os asteriscos do markdown que será usado no RTF)
+    body_text = "\n".join(l.replace("**", "").replace("*", "") for l in lines)
 
     paragraphs = build_paragraphs(lines)
     title_rtf = escape_rtf(args.title.upper())
