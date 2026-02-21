@@ -166,9 +166,6 @@ TMP_DIR = BASE_DIR / "tmp"
 # Diretório de progresso (.json por AN)
 PROGRESS_DIR = BASE_DIR / "progresso"
 
-# Diretório de logs
-LOG_DIR = BASE_DIR / "logs"
-
 # Diretório para payloads e demais dados da API Cockpit
 DATA_DIR = BASE_DIR / "data"
 
@@ -179,7 +176,7 @@ AUTH_DIR = BASE_DIR / "auth"
 COCKPIT_METADATA_DIR = DATA_DIR / "cockpit"
 
 # Garantir estrutura
-for d in [TMP_DIR, PROGRESS_DIR, DATA_DIR, AUTH_DIR, LOG_DIR, COCKPIT_METADATA_DIR]:
+for d in [TMP_DIR, PROGRESS_DIR, DATA_DIR, AUTH_DIR, COCKPIT_METADATA_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 
@@ -360,7 +357,7 @@ PIPELINE_API_URL = get("PIPELINE", "api_url", "").strip()
 PIPELINE_API_TOKEN = get("PIPELINE", "api_token", "").strip()
 PIPELINE_TIMEOUT = getint("PIPELINE", "timeout", 30)
 PIPELINE_STRICT = getbool("PIPELINE", "strict", False)
-PIPELINE_REQUEST_FORMAT = get("PIPELINE", "request_format", "json").strip().lower()
+PIPELINE_REQUEST_FORMAT = get("PIPELINE", "request_format", "json").strip().lower() # json, multipart_single_file, multipart_optimized_image
 PIPELINE_MODEL = get("PIPELINE", "model", "gpt-5").strip()
 PIPELINE_PROMPT = get("PIPELINE", "prompt", "").strip()
 PIPELINE_REPORT_TITLE = get("PIPELINE", "report_title", "RADIOGRAFIA DIGITAL DE TÓRAX NO LEITO").strip() or "RADIOGRAFIA DIGITAL DE TÓRAX NO LEITO"

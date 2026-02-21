@@ -55,6 +55,7 @@ import config
 from logger import log_info, log_erro, log_debug
 import fetcher
 import downloader
+import pipeline
 
 
 # ============================================================
@@ -153,14 +154,27 @@ def worker_download(servidor: str, lista_ans: list, controller=None):
             ok = downloader.baixar_an(servidor, an, mostrar_progresso=False)
             
             if ok:
-                sucessos += 1
-                if controller:
-                    count, limit, reached = controller.register_success()
-                    if limit:
-                        log_info(f"[{servidor}] Sucesso global: {count}/{limit}")
-                    if reached:
-                        log_info(f"[{servidor}] Limite global de sucessos atingido ({count}/{limit}). Encerrando.")
-                        break
+                des_base = config.TMP_DIR / an if config.STORAGE_MODE == "transient" else config.OUTPUT_DICOM_DIR / an
+                js = downloader._ler_json(an)
+                pipe_ok, final_status = pipeline.processar_exame(an, servidor, des_base, js)
+                
+                if final_status != "completo":
+                    js["status"] = final_status
+                    downloader._gravar_json(an, js)
+                
+                if config.STORAGE_MODE == "transient" and des_base.exists():
+                    try: shutil.rmtree(des_base)
+                    except Exception as e: log_erro(f"Erro limpando transient em {an}: {e}")
+                
+                if pipe_ok:
+                    sucessos += 1
+                    if controller:
+                        count, limit, reached = controller.register_success()
+                        if limit:
+                            log_info(f"[{servidor}] Sucesso global: {count}/{limit}")
+                        if reached:
+                            log_info(f"[{servidor}] Limite global de sucessos atingido ({count}/{limit}). Encerrando.")
+                            break
             else:
                 erros += 1
             

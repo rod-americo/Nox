@@ -32,7 +32,7 @@ from fetcher import SCENARIO_RULES, gerar_payload
 def preparar(cenarios: list[str]):
     log_info("Iniciando etapa preparatória (login + sessão + payloads)")
 
-    debug_dir = config.LOG_DIR
+    debug_dir = config.TMP_DIR
     debug_dir.mkdir(parents=True, exist_ok=True)
 
     def take_screenshot(p, name):
@@ -343,7 +343,6 @@ def mapear_cenarios():
 
 def main():
     import argparse # Garantir import local caso não tenha no topo
-    set_logfile(config.LOG_DIR / "prepare.log")
     
     parser = argparse.ArgumentParser(description="Ferramenta de Preparação e Login (Cockpit)", add_help=False)
     
