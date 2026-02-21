@@ -31,15 +31,29 @@ PERMIT_URL = f"{config.URL_BASE}/ris/laudo/api/v1/laudo/permitirlaudar"
 def get_exams_from_query(query_input: str, args: argparse.Namespace) -> list[str]:
     """
     Busca ANs a partir de um cenário ou arquivo JSON.
+    Inclui lógica de retry caso a sessão esteja expirada.
     """
     p = Path(query_input)
-    if query_input.lower().endswith(".json") or p.exists():
-        log_info(f"Lendo query do arquivo: {p.name}")
-        resultado = fetcher.fetch_from_file(str(p))
-    else:
-        log_info(f"Lendo query do cenário: {query_input}")
-        resultado = fetcher.fetch_cenario(query_input)
+    is_file = query_input.lower().endswith(".json") or p.exists()
     
+    def do_fetch():
+        if is_file:
+            log_info(f"Lendo query do arquivo: {p.name}")
+            return fetcher.fetch_from_file(str(p))
+        else:
+            log_info(f"Lendo query do cenário: {query_input}")
+            return fetcher.fetch_cenario(query_input)
+
+    try:
+        resultado = do_fetch()
+    except RuntimeError as e:
+        if "HTTP 401" in str(e) or "sessão" in str(e).lower():
+            log_aviso("Sessão expirada ao buscar exames. Tentando renovar...")
+            gravar_laudo.refresh_session()
+            resultado = do_fetch()
+        else:
+            raise
+
     ans = resultado.get("HBR", []) + resultado.get("HAC", [])
     
     if args.one and len(ans) > 1:
