@@ -677,7 +677,7 @@ def fetch_from_file(file_path: str, limite: Optional[int] = None) -> dict:
 
     dados = fetch_pagina(pagina, tamanho, cookies, headers, payload)
     if not dados:
-        log_info(f"[{p.name}] Nenhum exame encontrado para os critérios especificados.")
+        log_info(f"[{p.name}] Nenhum exame encontrado.")
         return resultado
 
     total_registros = dados[0].get("quantidadePaginacao", len(dados))
