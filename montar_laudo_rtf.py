@@ -199,7 +199,11 @@ def main() -> None:
             
             rest = parts[1].lstrip()
             if rest:
-                rest = rest[0].lower() + rest[1:]
+                # Verifica se a primeira palavra é uma sigla (ao menos 2 letras maiúsculas seguidas)
+                if len(rest) >= 2 and rest[0].isalpha() and rest[1].isalpha() and rest[0].isupper() and rest[1].isupper():
+                    pass # Mantém maiúscula
+                else:
+                    rest = rest[0].lower() + rest[1:]
                 
             line = f"**{header_clean}:** {rest}"
             
