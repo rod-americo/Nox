@@ -265,7 +265,7 @@ def processar_exame(an: str, srv: str) -> bool:
 def main():
     parser = argparse.ArgumentParser(description="Disparo de AI Pipeline Standalone.")
     parser.add_argument("query_file", help="Path para o arquivo .json da query.")
-    parser.add_argument("keyword", help="Palavra-chave do exame (ex: torax).")
+    parser.add_argument("--include", required=True, help="Palavra-chave do exame para filtro (ex: torax).")
     parser.add_argument("--exclude", help="Palavra-chave para ignorar o exame (ex: perfil). Ignora acentos/maiúsculas.")
     parser.add_argument("--one", action="store_true", help="Processa apenas 1 registro com sucesso e encerra.")
     parser.add_argument("--api-url", help="Override da URL do endpoint da API da IA.")
@@ -290,7 +290,7 @@ def main():
 
     log_info(f"Fetch encontrou um total de {len(todos_an_srv)} ANs na fila.")
     
-    query_keyword = remover_acentos(args.keyword)
+    query_keyword = remover_acentos(args.include)
     processados_com_sucesso = 0
     
     historico_file = config.BASE_DIR / ".ia_laudo_historico.json"
