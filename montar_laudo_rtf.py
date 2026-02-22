@@ -162,6 +162,7 @@ def main() -> None:
     parser.add_argument("--print-rtf", action="store_true", help="Imprime o RTF gerado no stdout (sem --output)")
     parser.add_argument("--plain-out", help="Escreve o texto puro do corpo neste arquivo")
     parser.add_argument("--payload-path", help="Salva o JSON completo do payload neste arquivo")
+    parser.add_argument("--ctr", help="Valor do Índice Cardiotorácico para substituição no laudo")
     pend_group = parser.add_mutually_exclusive_group()
     pend_group.add_argument("--pendente", dest="pendente", action="store_true", help="Marca `pendente` no payload (padrão)")
     pend_group.add_argument("--no-pendente", dest="pendente", action="store_false", help="Desmarca `pendente` no payload")
@@ -185,6 +186,11 @@ def main() -> None:
     body_text = read_body(args)
     lines = body_text.splitlines()
     
+    if getattr(args, "ctr", None):
+        for i, line in enumerate(lines):
+            if line.replace("*", "").strip().startswith("Silhueta cardiomediastinal:"):
+                lines[i] = f"Silhueta cardiomediastinal: índice cardiotorácico de {args.ctr}."
+                
     processed_lines = []
     for line in lines:
         if not line.strip():

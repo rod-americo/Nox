@@ -152,6 +152,25 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path):
         log_erro(f"[{an}] Erro no envio para o PIPELINE HTTP: {e}")
         return False
         
+    # 4.1 Extrai CTR (opcional)
+    ctr_text = ""
+    ctr_url = getattr(config, "PIPELINE_CTR_API_URL", None)
+    if ctr_url:
+        try:
+            log_info(f"[{an}] Solicitando extração de CTR ({ctr_url})...")
+            files_ctr = {"file": (f"{an}.jpg", jpeg_bytes, "image/jpeg")}
+            resp_ctr = requests.post(ctr_url, files=files_ctr, timeout=60)
+            if resp_ctr.status_code == 200:
+                body_ctr = resp_ctr.json()
+                ctr_raw = float(body_ctr.get("ctr", 0))
+                if ctr_raw > 0:
+                    ctr_text = f"{ctr_raw:.2f}".replace(".", ",")
+                    log_info(f"[{an}] CTR obtido com sucesso: {ctr_text}")
+            else:
+                log_aviso(f"[{an}] Falha ao obter CTR. HTTP {resp_ctr.status_code}")
+        except Exception as e:
+            log_aviso(f"[{an}] Erro na chamada da API de CTR: {e}")
+            
     # 5. Gera Laudo Cockpit
     cockpit_meta_file = config.COCKPIT_METADATA_DIR / f"{an}.json"
     if not cockpit_meta_file.exists():
@@ -184,6 +203,9 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path):
         "--payload-path", str(payload_path),
         "--pendente"
     ]
+    
+    if ctr_text:
+        montar_cmd.extend(["--ctr", ctr_text])
     
     try:
         montar_proc = subprocess.run(montar_cmd, capture_output=True, text=True)
@@ -247,11 +269,14 @@ def main():
     parser.add_argument("--exclude", help="Palavra-chave para ignorar o exame (ex: perfil). Ignora acentos/maiúsculas.")
     parser.add_argument("--one", action="store_true", help="Processa apenas 1 registro com sucesso e encerra.")
     parser.add_argument("--api-url", help="Override da URL do endpoint da API da IA.")
+    parser.add_argument("--ctr-url", help="URL da API de extração de Índice Cardiotorácico (opcional).")
     parser.add_argument("--title", help="Override do título do laudo (padrão: RADIOGRAFIA DE TÓRAX NO LEITO).")
     args = parser.parse_args()
 
     if args.api_url:
         config.PIPELINE_API_URL = args.api_url
+    if args.ctr_url:
+        config.PIPELINE_CTR_API_URL = args.ctr_url
     if args.title:
         config.PIPELINE_REPORT_TITLE = args.title
 
