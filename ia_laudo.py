@@ -204,7 +204,12 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path):
     try:
         gravar_proc = subprocess.run(gravar_cmd, capture_output=True, text=True)
         if gravar_proc.returncode != 0:
-            log_erro(f"[{an}] gravar_laudo: {(gravar_proc.stderr or gravar_proc.stdout).strip()}")
+            err_output = (gravar_proc.stderr or gravar_proc.stdout).strip()
+            # Tenta pegar apenas a linha do erro final para não poluir com traceback
+            linhas_erro = [l for l in err_output.splitlines() if "RuntimeError:" in l or "Exception:" in l]
+            msg_limpa = linhas_erro[-1] if linhas_erro else err_output.splitlines()[-1] if err_output else "Erro desconhecido"
+            
+            log_erro(f"[{an}] gravar_laudo falhou: {msg_limpa.strip()}")
             return False
             
         log_ok(f"[{an}] LAUDO GRAVADO COM SUCESSO (PENDENTE) no ID {id_laudo}!")
