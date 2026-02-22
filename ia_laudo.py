@@ -244,6 +244,7 @@ def main():
     parser = argparse.ArgumentParser(description="Disparo de AI Pipeline Standalone.")
     parser.add_argument("query_file", help="Path para o arquivo .json da query.")
     parser.add_argument("keyword", help="Palavra-chave do exame (ex: torax).")
+    parser.add_argument("--exclude", help="Palavra-chave para ignorar o exame (ex: perfil). Ignora acentos/maiúsculas.")
     parser.add_argument("--one", action="store_true", help="Processa apenas 1 registro com sucesso e encerra.")
     parser.add_argument("--api-url", help="Override da URL do endpoint da API da IA.")
     parser.add_argument("--title", help="Override do título do laudo (padrão: RADIOGRAFIA DE TÓRAX NO LEITO).")
@@ -292,6 +293,10 @@ def main():
         nm_exame = meta.get("nm_exame", "")
         # A regra é: conter a keyword. Pode ser IDÊNTICO ou string inteira!
         if query_keyword not in remover_acentos(nm_exame):
+            continue
+            
+        if args.exclude and remover_acentos(args.exclude) in remover_acentos(nm_exame):
+            log_info(f"[{an}] Ignorado. Exame contém palavra excluída '{args.exclude}': {nm_exame}")
             continue
             
         log_info(f"Encontrado MATCH em {an} (Servidor: {srv}) -> {nm_exame}")
