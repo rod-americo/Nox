@@ -221,7 +221,7 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path):
 
 def processar_exame(an: str, srv: str) -> bool:
     """Modo isolado (Baixa, Processa, Manda IA)"""
-    log_info(f"---------- Iniciando execução Single-Shot PIPELINE do AN: {an} ----------")
+    log_info(f"---------- Iniciando execução PIPELINE do AN: {an} ----------")
     
     config.STORAGE_MODE = "pipeline"
     pasta = config.OUTPUT_DICOM_DIR / an
