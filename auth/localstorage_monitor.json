@@ -3,10 +3,10 @@
   "_laudo-remoto_theme_selected_color": "light",
   "function () { [native code] }": "{}",
   "porPedido": "{\"porAtendimento\":true,\"porPedido\":false}",
-  "laudo-remoto_session_id": "_dq4sb7uz4",
+  "laudo-remoto_session_id": "_m1j48rn7m",
   "accounts": "[{\"name\":\"RODRIGO AMERICO CUNHA DE SOUZA\",\"id\":7229,\"username\":\"032155786\"}]",
   "laudo-remoto_url_editor": "https://Cockpitweb.redeimpar.com.br:17205/",
   "currentLanguage": "pt-br",
   "config_lr": "{\"_theme\":\"light\",\"tp_idioma\":\"pt-br\",\"tp_visualizador\":\"vivace\"}",
-  "laudo-remoto_current_user": "{\"user\":{\"username\":\"032155786\",\"id\":7229,\"name\":\"RODRIGO AMERICO CUNHA DE SOUZA\",\"medico\":true},\"token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAzMjE1NTc4NiIsIlBlcmZpbCI6Ik1hc3RlciIsIk1hcXVpbmFJcCI6IjE3Mi4zMS4yMDQuMyIsIk1hcXVpbmFOb21lIjoiIiwiTGlzdGFNZWRpY29zIjoiW3tcIklkbXVcIjoyMTk1NDQsXCJJZG1cIjo1MjQ0NSxcIklkdVwiOjcyMjksXCJJZHVuXCI6NH0se1wiSWRtdVwiOjE2NTExMCxcIklkbVwiOjUyNDQ1LFwiSWR1XCI6NzIyOSxcIklkdW5cIjo1fSx7XCJJZG11XCI6MTY1MTExLFwiSWRtXCI6NTI0NDUsXCJJZHVcIjo3MjI5LFwiSWR1blwiOjN9XSIsIk9uZVBhc3NJZCI6IiIsIklkVXN1YXJpbyI6IjcyMjkiLCJJZFNlc3Npb24iOiIiLCJuYmYiOjE3NzE2MzkzMzYsImV4cCI6MTc3MTcyNTczNiwiaWF0IjoxNzcxNjM5MzM2LCJpc3MiOiJNVk1EIiwiYXVkIjoiUkVNUlBUIn0.3dYT2dqjFqhWyUx9XzLIwQwb-LgZ3puHkOQcdExd_aI\"}"
+  "laudo-remoto_current_user": "{\"user\":{\"username\":\"032155786\",\"id\":7229,\"name\":\"RODRIGO AMERICO CUNHA DE SOUZA\",\"medico\":true},\"token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAzMjE1NTc4NiIsIlBlcmZpbCI6Ik1hc3RlciIsIk1hcXVpbmFJcCI6IjE3Mi4zMS4yMDQuMTEiLCJNYXF1aW5hTm9tZSI6IiIsIkxpc3RhTWVkaWNvcyI6Ilt7XCJJZG11XCI6MjE5NTQ0LFwiSWRtXCI6NTI0NDUsXCJJZHVcIjo3MjI5LFwiSWR1blwiOjR9LHtcIklkbXVcIjoxNjUxMTAsXCJJZG1cIjo1MjQ0NSxcIklkdVwiOjcyMjksXCJJZHVuXCI6NX0se1wiSWRtdVwiOjE2NTExMSxcIklkbVwiOjUyNDQ1LFwiSWR1XCI6NzIyOSxcIklkdW5cIjozfV0iLCJPbmVQYXNzSWQiOiIiLCJJZFVzdWFyaW8iOiI3MjI5IiwiSWRTZXNzaW9uIjoiIiwibmJmIjoxNzcxODg3NjIxLCJleHAiOjE3NzE5NzQwMjEsImlhdCI6MTc3MTg4NzYyMSwiaXNzIjoiTVZNRCIsImF1ZCI6IlJFTVJQVCJ9.eUQrErZOjbqO-v7DqAjw0dmZsFdNujQp4mzyhXlRIFc\"}"
 }

@@ -73,15 +73,16 @@ def buscar_exames(query_file: str) -> dict:
     return dados
 
 
-def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path):
+def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path, flow: str = "medgemma"):
     """
     Executa conversão -> POST -> grava_laudo.
+    Baseado no `flow`, a sequência de APIs muda.
     """
-    api_url = getattr(config, "PIPELINE_API_URL", "")
-    if not api_url:
-        log_erro("A variável config.PIPELINE_API_URL não está configurada.")
-        return False
-        
+    # 0. Setup base
+    api_url_medgemma = getattr(config, "PIPELINE_API_URL", "")
+    api_url_openai = "http://localhost:8002/analyze"
+    ctr_url = getattr(config, "PIPELINE_CTR_API_URL", None)
+    
     token = getattr(config, "PIPELINE_API_TOKEN", "")
     headers = {}
     if token:
@@ -117,61 +118,7 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path):
         log_erro(f"[{an}] Erro na conversão para JPEG: {e}")
         return False
 
-    # 4. Envia payload
-    form_data = {
-        "identificador": str(an),
-        "original_filename": dcm_target.name,
-    }
-    if idade_text:
-        form_data["age"] = idade_text
-        
-    files = {"file": (f"{an}.jpg", jpeg_bytes, "image/jpeg")}
-    
-    try:
-        log_info(f"[{an}] Enviando POST para a API da IA ({len(jpeg_bytes)/1024:.1f} KB)...")
-        resp = requests.post(api_url, data=form_data, files=files, headers=headers, timeout=60)
-        
-        # Salva o response JSON pra gente usar na criação do RTF
-        response_trace_file = destino_base / "pipeline_response.json"
-        
-        try: body = resp.json()
-        except: body = resp.text
-        
-        trace = {
-            "request": {
-                "url": api_url,
-                "an": an,
-                "fields": form_data,
-            },
-            "response": {"status_code": resp.status_code, "body": body}
-        }
-        response_trace_file.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
-        resp.raise_for_status()
-        log_ok(f"[{an}] Respostas salvas com SUCESSO. StatusCode: {resp.status_code}")
-    except Exception as e:
-        log_erro(f"[{an}] Erro no envio para o PIPELINE HTTP: {e}")
-        return False
-        
-    # 4.1 Extrai CTR (opcional)
-    ctr_text = ""
-    ctr_url = getattr(config, "PIPELINE_CTR_API_URL", None)
-    if ctr_url:
-        try:
-            log_info(f"[{an}] Solicitando extração de CTR ({ctr_url})...")
-            files_ctr = {"file": (f"{an}.jpg", jpeg_bytes, "image/jpeg")}
-            resp_ctr = requests.post(ctr_url, files=files_ctr, timeout=60)
-            if resp_ctr.status_code == 200:
-                body_ctr = resp_ctr.json()
-                ctr_raw = float(body_ctr.get("ctr", 0))
-                if ctr_raw > 0:
-                    ctr_text = f"{ctr_raw:.2f}".replace(".", ",")
-                    log_info(f"[{an}] CTR obtido com sucesso: {ctr_text}")
-            else:
-                log_aviso(f"[{an}] Falha ao obter CTR. HTTP {resp_ctr.status_code}")
-        except Exception as e:
-            log_aviso(f"[{an}] Erro na chamada da API de CTR: {e}")
-            
-    # 5. Gera Laudo Cockpit
+    # 4. Busca Metadata Cockpit (para ID do laudo)
     cockpit_meta_file = config.COCKPIT_METADATA_DIR / f"{an}.json"
     if not cockpit_meta_file.exists():
         log_erro(f"[{an}] Metadata {cockpit_meta_file.name} ausente, não foi possível laudar.")
@@ -187,7 +134,103 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path):
     if not id_laudo:
         log_erro(f"[{an}] id_exame_pedido ausente no json!")
         return False
+
+    ctr_text = ""
+    response_trace_file = destino_base / "pipeline_response.json"
+
+    # --- FLUXO MEDGEMMA (Legado) ---
+    if flow == "medgemma":
+        if not api_url_medgemma:
+            log_erro("A variável config.PIPELINE_API_URL não está configurada.")
+            return False
+
+        # 4.1 Envia payload para IA
+        form_data = {"identificador": str(an), "original_filename": dcm_target.name}
+        if idade_text: form_data["age"] = idade_text
+        files = {"file": (f"{an}.jpg", jpeg_bytes, "image/jpeg")}
         
+        try:
+            log_info(f"[{an}] [MedGemma] Enviando POST para a API da IA ({len(jpeg_bytes)/1024:.1f} KB)...")
+            resp = requests.post(api_url_medgemma, data=form_data, files=files, headers=headers, timeout=60)
+            
+            try: body = resp.json()
+            except: body = resp.text
+            
+            trace = {
+                "request": {"url": api_url_medgemma, "an": an, "fields": form_data},
+                "response": {"status_code": resp.status_code, "body": body}
+            }
+            response_trace_file.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
+            resp.raise_for_status()
+            log_ok(f"[{an}] Respostas salvas com SUCESSO.")
+        except Exception as e:
+            log_erro(f"[{an}] Erro no envio para o PIPELINE MedGemma: {e}")
+            return False
+
+        # 4.2 Extrai CTR (opcional)
+        if ctr_url:
+            try:
+                log_info(f"[{an}] Solicitando extração de CTR ({ctr_url})...")
+                files_ctr = {"file": (f"{an}.jpg", jpeg_bytes, "image/jpeg")}
+                resp_ctr = requests.post(ctr_url, files=files_ctr, timeout=60)
+                if resp_ctr.status_code == 200:
+                    body_ctr = resp_ctr.json()
+                    ctr_raw = float(body_ctr.get("ctr", 0))
+                    if ctr_raw > 0:
+                        ctr_text = f"{ctr_raw:.2f}".replace(".", ",")
+                        log_info(f"[{an}] CTR obtido com sucesso: {ctr_text}")
+            except Exception as e:
+                log_aviso(f"[{an}] Erro na chamada da API de CTR: {e}")
+
+    # --- FLUXO OPENAI (VLM) ---
+    else:
+        # 4.1 Extrai CTR PRIMEIRO (4.2 no fluxo do usuário, mas necessário para o payload do analyze)
+        if ctr_url:
+            try:
+                log_info(f"[{an}] [OpenAI] Obtendo CTR inicial ({ctr_url})...")
+                files_ctr = {"file": (f"{an}.jpg", jpeg_bytes, "image/jpeg")}
+                resp_ctr = requests.post(ctr_url, files=files_ctr, timeout=60)
+                if resp_ctr.status_code == 200:
+                    ctr_raw = float(resp_ctr.json().get("ctr", 0))
+                    if ctr_raw > 0:
+                        ctr_text = f"{ctr_raw:.2f}".replace(".", ",")
+            except Exception as e:
+                log_aviso(f"[{an}] Erro ao obter CTR inicial: {e}")
+
+        # 4.2 Envia para OpenAI /analyze
+        form_data = {
+            "identificador": f"{an}_{id_laudo}",
+            "age": idade_text or "",
+            "ict": ctr_text or ""
+        }
+        files = {"file": (f"{an}.jpg", jpeg_bytes, "image/jpeg")}
+        
+        try:
+            log_info(f"[{an}] [OpenAI] Enviando POST para analyze em {api_url_openai}...")
+            resp = requests.post(api_url_openai, data=form_data, files=files, timeout=90)
+            
+            try: body = resp.json()
+            except: body = resp.text
+            
+            trace = {
+                "request": {"url": api_url_openai, "an": an, "fields": form_data},
+                "response": {"status_code": resp.status_code, "body": body}
+            }
+            response_trace_file.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
+            resp.raise_for_status()
+            
+            # Se a VLM retornar um ICT próprio, ele sobrepõe o anterior
+            if isinstance(body, dict) and body.get("ict"):
+                vlm_ict = str(body["ict"]).replace(".", ",")
+                log_info(f"[{an}] CTR atualizado pela VLM: {vlm_ict}")
+                ctr_text = vlm_ict
+                
+            log_ok(f"[{an}] OK. Resposta da OpenAI processada.")
+        except Exception as e:
+            log_erro(f"[{an}] Erro no envio para o PIPELINE OpenAI: {e}")
+            return False
+
+    # 5. Gera Laudo Cockpit
     medico_id = getattr(config, "PIPELINE_DEFAULT_MEDICO_ID", "165111")
     title = getattr(config, "PIPELINE_REPORT_TITLE", "RADIOGRAFIA DE TÓRAX NO LEITO")
     payload_path = destino_base / "laudo_payload.json"
@@ -218,19 +261,17 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path):
         
     # 5.2 Gravar API
     gravar_cmd = [
-         sys.executable,
-         str(config.BASE_DIR / "gravar_laudo.py"),
-         str(id_laudo),
-         "--payload-file", str(payload_path)
+        sys.executable,
+        str(config.BASE_DIR / "gravar_laudo.py"),
+        str(id_laudo),
+        "--payload-file", str(payload_path)
     ]
     try:
         gravar_proc = subprocess.run(gravar_cmd, capture_output=True, text=True)
         if gravar_proc.returncode != 0:
             err_output = (gravar_proc.stderr or gravar_proc.stdout).strip()
-            # Tenta pegar apenas a linha do erro final para não poluir com traceback
             linhas_erro = [l for l in err_output.splitlines() if "RuntimeError:" in l or "Exception:" in l]
             msg_limpa = linhas_erro[-1] if linhas_erro else err_output.splitlines()[-1] if err_output else "Erro desconhecido"
-            
             log_erro(f"[{an}] gravar_laudo falhou: {msg_limpa.strip()}")
             return False
             
@@ -241,9 +282,9 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path):
          return False
 
 
-def processar_exame(an: str, srv: str) -> bool:
+def processar_exame(an: str, srv: str, flow: str = "medgemma") -> bool:
     """Modo isolado (Baixa, Processa, Manda IA)"""
-    log_info(f"Iniciando execução PIPELINE do AN: {an}")
+    log_info(f"Iniciando execução PIPELINE ({flow}) do AN: {an}")
     
     config.STORAGE_MODE = "pipeline"
     pasta = config.OUTPUT_DICOM_DIR / an
@@ -259,7 +300,7 @@ def processar_exame(an: str, srv: str) -> bool:
          body = meta_path.read_text(encoding="utf-8")
          (pasta / "metadata_cockpit.json").write_text(body, encoding="utf-8")
     
-    return enviar_para_ia_e_laudar(an, srv, pasta)
+    return enviar_para_ia_e_laudar(an, srv, pasta, flow=flow)
     
 
 def main():
@@ -268,6 +309,12 @@ def main():
     parser.add_argument("--include", required=True, help="Palavra-chave do exame para filtro (ex: torax).")
     parser.add_argument("--exclude", help="Palavra-chave para ignorar o exame (ex: perfil). Ignora acentos/maiúsculas.")
     parser.add_argument("--one", action="store_true", help="Processa apenas 1 registro com sucesso e encerra.")
+    
+    flow_group = parser.add_mutually_exclusive_group()
+    flow_group.add_argument("--medgemma", action="store_const", dest="flow", const="medgemma", help="Usa fluxo MedGemma (padrão).")
+    flow_group.add_argument("--openai", action="store_const", dest="flow", const="openai", help="Usa fluxo OpenAI (VLM).")
+    parser.set_defaults(flow="medgemma")
+
     parser.add_argument("--api-url", help="Override da URL do endpoint da API da IA.")
     parser.add_argument("--ctr-url", help="URL da API de extração de Índice Cardiotorácico (opcional).")
     parser.add_argument("--title", help="Override do título do laudo (padrão: RADIOGRAFIA DE TÓRAX NO LEITO).")
@@ -325,7 +372,7 @@ def main():
             continue
             
         log_info(f"Encontrado MATCH em {an} (Servidor: {srv}) -> {nm_exame}")
-        sucesso = processar_exame(an, srv)
+        sucesso = processar_exame(an, srv, flow=args.flow)
         
         if sucesso:
              # Só gravamos no histórico interno caso o envio para a API tenha
