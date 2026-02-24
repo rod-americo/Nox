@@ -249,7 +249,7 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path, flow: str = "
         "--pendente"
     ]
     
-    if ctr_text:
+    if flow == "medgemma" and ctr_text:
         montar_cmd.extend(["--ctr", ctr_text])
     
     try:
