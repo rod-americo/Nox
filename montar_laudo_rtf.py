@@ -81,7 +81,11 @@ def render_markdown_bold_to_rtf(text: str) -> str:
 
 def _read_final_report_from_pipeline(path: str) -> str:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
-    return str(data.get("response", {}).get("body", {}).get("final_report", "") or "")
+    body = data.get("response", {}).get("body", {})
+    if isinstance(body, dict):
+        # MedGemma usa final_report, OpenAI usa laudo_estruturado
+        return str(body.get("final_report") or body.get("laudo_estruturado") or "")
+    return str(body)
 
 
 def normalize_final_report_text(text: str) -> str:

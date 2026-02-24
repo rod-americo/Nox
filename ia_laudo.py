@@ -201,7 +201,7 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path, flow: str = "
 
         # 4.2 Envia para OpenAI /analyze
         form_data = {
-            "identificador": f"{an}_{id_laudo}",
+            "identificador": an,
             "age": idade_text or "",
             "ict": ctr_text or ""
         }
