@@ -79,8 +79,10 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path, flow: str = "
     Baseado no `flow`, a sequência de APIs muda.
     """
     # 0. Setup base
-    api_url_medgemma = getattr(config, "PIPELINE_API_URL", "")
-    api_url_openai = "http://localhost:8002/analyze"
+    api_url = getattr(config, "PIPELINE_API_URL", "")
+    if flow == "openai" and not api_url:
+        api_url = "http://localhost:8002/analyze"
+        
     ctr_url = getattr(config, "PIPELINE_CTR_API_URL", None)
     
     token = getattr(config, "PIPELINE_API_TOKEN", "")
@@ -140,7 +142,7 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path, flow: str = "
 
     # --- FLUXO MEDGEMMA (Legado) ---
     if flow == "medgemma":
-        if not api_url_medgemma:
+        if not api_url:
             log_erro("A variável config.PIPELINE_API_URL não está configurada.")
             return False
 
@@ -151,13 +153,13 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path, flow: str = "
         
         try:
             log_info(f"[{an}] [MedGemma] Enviando POST para a API da IA ({len(jpeg_bytes)/1024:.1f} KB)...")
-            resp = requests.post(api_url_medgemma, data=form_data, files=files, headers=headers, timeout=60)
+            resp = requests.post(api_url, data=form_data, files=files, headers=headers, timeout=60)
             
             try: body = resp.json()
             except: body = resp.text
             
             trace = {
-                "request": {"url": api_url_medgemma, "an": an, "fields": form_data},
+                "request": {"url": api_url, "an": an, "fields": form_data},
                 "response": {"status_code": resp.status_code, "body": body}
             }
             response_trace_file.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -206,14 +208,14 @@ def enviar_para_ia_e_laudar(an: str, srv: str, destino_base: Path, flow: str = "
         files = {"file": (f"{an}.jpg", jpeg_bytes, "image/jpeg")}
         
         try:
-            log_info(f"[{an}] [OpenAI] Enviando POST para analyze em {api_url_openai}...")
-            resp = requests.post(api_url_openai, data=form_data, files=files, timeout=90)
+            log_info(f"[{an}] [OpenAI] Enviando POST para analyze em {api_url}...")
+            resp = requests.post(api_url, data=form_data, files=files, timeout=90)
             
             try: body = resp.json()
             except: body = resp.text
             
             trace = {
-                "request": {"url": api_url_openai, "an": an, "fields": form_data},
+                "request": {"url": api_url, "an": an, "fields": form_data},
                 "response": {"status_code": resp.status_code, "body": body}
             }
             response_trace_file.write_text(json.dumps(trace, ensure_ascii=False, indent=2), encoding="utf-8")
