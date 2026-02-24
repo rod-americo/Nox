@@ -3,3 +3,5 @@ pydicom
 requests
 rich
 customtkinter
+numpy
+Pillow
