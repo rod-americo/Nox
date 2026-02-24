@@ -1,6 +1,7 @@
 # Configurações Pessoais
 config.ini
 .env
+auth/
 
 # Dados e Logs
 data/

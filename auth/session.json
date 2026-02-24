@@ -1,7 +1,0 @@
-{
-  "cookies": [],
-  "headers": {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.7390.37 Safari/537.36",
-    "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAzMjE1NTc4NiIsIlBlcmZpbCI6Ik1hc3RlciIsIk1hcXVpbmFJcCI6IjE3Mi4zMS4yMDQuMTEiLCJNYXF1aW5hTm9tZSI6IiIsIkxpc3RhTWVkaWNvcyI6Ilt7XCJJZG11XCI6MjE5NTQ0LFwiSWRtXCI6NTI0NDUsXCJJZHVcIjo3MjI5LFwiSWR1blwiOjR9LHtcIklkbXVcIjoxNjUxMTAsXCJJZG1cIjo1MjQ0NSxcIklkdVwiOjcyMjksXCJJZHVuXCI6NX0se1wiSWRtdVwiOjE2NTExMSxcIklkbVwiOjUyNDQ1LFwiSWR1XCI6NzIyOSxcIklkdW5cIjozfV0iLCJPbmVQYXNzSWQiOiIiLCJJZFVzdWFyaW8iOiI3MjI5IiwiSWRTZXNzaW9uIjoiIiwibmJmIjoxNzcxODg3NjIxLCJleHAiOjE3NzE5NzQwMjEsImlhdCI6MTc3MTg4NzYyMSwiaXNzIjoiTVZNRCIsImF1ZCI6IlJFTVJQVCJ9.eUQrErZOjbqO-v7DqAjw0dmZsFdNujQp4mzyhXlRIFc"
-  }
-}
