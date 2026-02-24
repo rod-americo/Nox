@@ -49,7 +49,7 @@ def escape_rtf(text: str) -> str:
 
 def build_paragraphs(lines: Iterable[str]) -> str:
     paragraphs = [
-        PAR_TEMPLATE.format(text=render_markdown_bold_to_rtf(line))
+        PAR_TEMPLATE.format(text=render_markdown_to_rtf(line))
         for line in lines
     ]
     if not paragraphs:
@@ -57,22 +57,30 @@ def build_paragraphs(lines: Iterable[str]) -> str:
     return "".join(paragraphs)
 
 
-def render_markdown_bold_to_rtf(text: str) -> str:
+def render_markdown_to_rtf(text: str) -> str:
     """
-    Converte *texto* ou **texto** para negrito RTF.
+    Converte **texto** para negrito (\b) e *texto* para itálico (\i) em RTF.
     """
     if not text:
         return ""
 
     out: list[str] = []
     last = 0
+    # Ordem importa: ** antes de *
     pattern = re.compile(r"\*\*(.+?)\*\*|\*(.+?)\*")
     for match in pattern.finditer(text):
         start, end = match.span()
         if start > last:
             out.append(escape_rtf(text[last:start]))
-        inner = match.group(1) if match.group(1) is not None else match.group(2)
-        out.append(r"\b " + escape_rtf(inner) + r"\b0 ")
+        
+        bold_text = match.group(1)
+        italic_text = match.group(2)
+        
+        if bold_text is not None:
+             out.append(r"\b " + escape_rtf(bold_text) + r"\b0 ")
+        elif italic_text is not None:
+             out.append(r"\i " + escape_rtf(italic_text) + r"\i0 ")
+             
         last = end
     if last < len(text):
         out.append(escape_rtf(text[last:]))
