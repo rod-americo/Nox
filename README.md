@@ -236,8 +236,39 @@ python fetcher.py --raw MONITOR --inicio 2023-01-01 --fim 2023-01-02
 # Download único
 python downloader.py HAC 12345678
 
+# Download único com override de storage mode
+python downloader.py HAC 12345678 --storage-mode pipeline
+
 # Batch (lê do clipboard)
 python downloader.py
+```
+
+#### `scripts/dataset_rx_por_medico.py` — Dataset RX (Fine-tuning)
+
+**Descrição**: Extrai exames RX laudados por médico, baixa DICOM, converte para JPG e gera `finetune.jsonl`.
+
+**Saída**:
+- `images/` com JPGs nomeados em formato global (`AN_001.jpg`, `AN_002.jpg`, ...)
+- `finetune.jsonl` com pares `messages` (`user` com lista de imagens do estudo, `assistant` com `texto_plano`)
+- `checkpoint.json`, `jsonl_index.json`, `fetch_queue.json`, `run.log` (suporte a retomada)
+- opcionalmente (modo não-lean): pasta por AN com `dicom/`, `metadata_cockpit.json`, `laudo.json`
+
+**Uso**:
+```bash
+# Execução padrão com retomada
+python scripts/dataset_rx_por_medico.py --query data/payload_rx_exec_52455_100d.json --medico-id 52455 --role executante --storage-mode pipeline --copy-dicom --output-dir data/dataset_ft_plinio_100d
+
+# Retomada sem refazer fetch (usa fetch_queue.json)
+python scripts/dataset_rx_por_medico.py --query data/payload_rx_exec_52455_100d.json --medico-id 52455 --role executante --storage-mode pipeline --copy-dicom --output-dir data/dataset_ft_plinio_100d --resume
+
+# Forçar novo fetch da fila
+python scripts/dataset_rx_por_medico.py --query data/payload_rx_exec_52455_100d.json --medico-id 52455 --role executante --storage-mode pipeline --copy-dicom --output-dir data/dataset_ft_plinio_100d --refresh-fetch-queue
+
+# Reduzir taxa de chamadas entre exames
+python scripts/dataset_rx_por_medico.py --query data/payload_rx_exec_52455_100d.json --medico-id 52455 --role executante --storage-mode pipeline --copy-dicom --output-dir data/dataset_ft_plinio_100d --delay-seconds 1.5
+
+# Modo lean (não salva pasta por AN; mantém apenas images/jsonl/arquivos de controle)
+python scripts/dataset_rx_por_medico.py --query data/payload_rx_exec_52455_100d.json --medico-id 52455 --role executante --storage-mode pipeline --output-dir data/dataset_ft_plinio_100d --resume --retry-failed --delay-seconds 1.5 --lean
 ```
 
 ---
@@ -250,5 +281,53 @@ python downloader.py
     *   `requests`
     *   `pydicom`
     *   `rich`
+    *   `numpy`
+    *   `Pillow`
+    *   `pylibjpeg`
+    *   `pylibjpeg-libjpeg`
+    *   `python-gdcm`
+
+---
+
+## 🛠️ Troubleshooting
+
+### Erro ao converter DICOM para JPG (JPEG Lossless)
+
+Se aparecer erro relacionado a `Unable to decompress 'JPEG Lossless...'`, garanta os decoders instalados:
+
+```bash
+pip install pylibjpeg pylibjpeg-libjpeg python-gdcm
+```
+
+Validação rápida:
+```bash
+python -m pip show pylibjpeg pylibjpeg-libjpeg python-gdcm
+```
+
+### Retomada de execução em datasets grandes
+
+O `scripts/dataset_rx_por_medico.py` já suporta retomada:
+- `checkpoint.json`: status por AN (`done/failed/pending`)
+- `jsonl_index.json`: evita duplicar linhas no `finetune.jsonl`
+- `fetch_queue.json`: reutiliza fila de ANs sem refazer fetch
+- `run.log`: trilha de execução
+
+Comportamento padrão:
+- reiniciando no mesmo `--output-dir`, o script pula concluídos e continua dos pendentes.
+- quando a query não muda, ele reaproveita `fetch_queue.json` e evita nova chamada de fetch.
+
+### Modo lean para reduzir I/O
+
+Use `--lean` quando o objetivo for somente treinamento. Nesse modo ele não persiste:
+- `dicom/`
+- `metadata_cockpit.json`
+- `laudo.json`
+
+Mantém apenas `images/`, `finetune.jsonl` e arquivos de controle (`checkpoint/jsonl_index/fetch_queue/run.log`).
+
+Para forçar nova consulta de fila:
+```bash
+python scripts/dataset_rx_por_medico.py ... --refresh-fetch-queue
+```
 
 Desenvolvido para agilizar o fluxo de trabalho radiológico. v2.1.0

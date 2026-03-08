@@ -59,7 +59,7 @@ def build_paragraphs(lines: Iterable[str]) -> str:
 
 def render_markdown_to_rtf(text: str) -> str:
     """
-    Converte **texto** para negrito (\b) e *texto* para itálico (\i) em RTF.
+    Converte **texto** para negrito (\\b) e *texto* para itálico (\\i) em RTF.
     """
     if not text:
         return ""

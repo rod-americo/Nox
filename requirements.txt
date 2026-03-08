@@ -5,3 +5,6 @@ rich
 customtkinter
 numpy
 Pillow
+pylibjpeg
+pylibjpeg-libjpeg
+python-gdcm

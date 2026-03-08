@@ -534,6 +534,11 @@ def main():
     
     opt_group.add_argument("--no-progress", "-np", action="store_true", help="Desativar barra de progresso")
     opt_group.add_argument("--metadado", action="store_true", help="Salva metadados Cockpit/DICOM")
+    opt_group.add_argument(
+        "--storage-mode",
+        choices=["transient", "persistent", "pipeline"],
+        help="Override temporário do STORAGE_MODE durante esta execução.",
+    )
     opt_group.add_argument("-h", "--help", action="help", help="Mostra esta mensagem de ajuda e sai")
     
     args = parser.parse_args()
@@ -541,6 +546,9 @@ def main():
     # Override config se flag presente
     if args.metadado:
         config.SAVE_METADATA = True
+    if args.storage_mode:
+        config.STORAGE_MODE = args.storage_mode
+        log_info(f"Override de storage_mode aplicado: {config.STORAGE_MODE}")
 
     # 1. Caso 'python downloader.py' (sem args) -> Batch Auto-Detect (HAC -> HBR)
     if not args.servidor:
@@ -563,7 +571,6 @@ def main():
             ok = baixar_an("HAC", an, mostrar_progresso=not args.no_progress)
             if ok:
                 import pipeline
-                import config
                 import shutil
                 des_cli = config.TMP_DIR / an if config.STORAGE_MODE == "transient" else config.OUTPUT_DICOM_DIR / an
                 cli_js = _ler_json(an)
@@ -581,7 +588,6 @@ def main():
             ok = baixar_an("HBR", an, mostrar_progresso=not args.no_progress)
             if ok:
                 import pipeline
-                import config
                 import shutil
                 des_cli = config.TMP_DIR / an if config.STORAGE_MODE == "transient" else config.OUTPUT_DICOM_DIR / an
                 cli_js = _ler_json(an)
@@ -626,7 +632,6 @@ def main():
             ok = baixar_an(servidor, an, mostrar_progresso=not args.no_progress)
             if ok:
                 import pipeline
-                import config
                 import shutil
                 des_cli = config.TMP_DIR / an if config.STORAGE_MODE == "transient" else config.OUTPUT_DICOM_DIR / an
                 cli_js = _ler_json(an)
@@ -660,7 +665,6 @@ def main():
         ok = baixar_an(servidor, an, mostrar_progresso=not args.no_progress)
         if ok:
             import pipeline
-            import config
             import shutil
             des_cli = config.TMP_DIR / an if config.STORAGE_MODE == "transient" else config.OUTPUT_DICOM_DIR / an
             cli_js = _ler_json(an)

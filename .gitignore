@@ -15,6 +15,7 @@ debug/
 
 # Python Cache
 __pycache__/
+.pycache/
 *.pyc
 .nox/
 venv/

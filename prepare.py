@@ -16,6 +16,7 @@ Uso:
 
 import json
 import sys
+import time
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
@@ -23,6 +24,124 @@ from datetime import datetime, timedelta
 import config
 from logger import log_info, log_ok, log_erro, log_debug, set_logfile
 from fetcher import SCENARIO_RULES, gerar_payload
+
+
+USERNAME_SELECTORS = [
+    "#user",
+    "#username",
+    "input[name='user']",
+    "input[name='username']",
+    "input[type='email']",
+    "input[autocomplete='username']",
+    "input[type='text']",
+]
+
+PASSWORD_SELECTORS = [
+    "#password",
+    "input[name='password']",
+    "input[type='password']",
+    "input[autocomplete='current-password']",
+]
+
+SUBMIT_SELECTORS = [
+    "#login-submit",
+    "button[type='submit']",
+    "input[type='submit']",
+    "button:has-text('Entrar')",
+    "button:has-text('Login')",
+]
+
+
+def _find_visible_locator_in_page_or_frames(page, selectors: list[str], timeout_ms: int = 60_000):
+    deadline = time.monotonic() + (timeout_ms / 1000)
+    last_error = None
+
+    while time.monotonic() < deadline:
+        search_scopes = [page, *[f for f in page.frames if f != page.main_frame]]
+        for scope in search_scopes:
+            for sel in selectors:
+                try:
+                    loc = scope.locator(sel).first
+                    if loc.count() > 0 and loc.is_visible(timeout=250):
+                        return loc, sel
+                except Exception as e:
+                    last_error = e
+                    continue
+        page.wait_for_timeout(400)
+
+    if last_error:
+        log_debug(f"Nenhum seletor visível encontrado. Último erro: {last_error}")
+    return None, None
+
+
+def _click_submit_with_fallback(page):
+    btn, sel = _find_visible_locator_in_page_or_frames(page, SUBMIT_SELECTORS, timeout_ms=10_000)
+    if btn:
+        btn.click()
+        return sel
+
+    page.keyboard.press("Enter")
+    return "keyboard:Enter"
+
+
+def _page_diag(page) -> str:
+    try:
+        title = page.title()
+    except Exception:
+        title = "<indisponível>"
+    return f"url={page.url} | title={title}"
+
+
+def fazer_login(page, take_screenshot=None):
+    log_info("Abrindo tela de login")
+    page.goto(config.URL_LOGIN, timeout=90_000, wait_until="domcontentloaded")
+    try:
+        page.wait_for_load_state("networkidle", timeout=10_000)
+    except Exception:
+        pass
+
+    if take_screenshot:
+        take_screenshot(page, "1_login_page")
+
+    user_input, user_selector = _find_visible_locator_in_page_or_frames(page, USERNAME_SELECTORS, timeout_ms=90_000)
+    if not user_input:
+        raise RuntimeError(
+            "Campo de usuário não encontrado após carregar login. "
+            f"Diag: {_page_diag(page)}"
+        )
+
+    user_input.fill(config.USUARIO)
+    log_debug(f"Campo de usuário preenchido com seletor: {user_selector}")
+    if take_screenshot:
+        take_screenshot(page, "2_user_filled")
+
+    submit_user_selector = _click_submit_with_fallback(page)
+    log_debug(f"Ação de submit após usuário: {submit_user_selector}")
+
+    password_input, password_selector = _find_visible_locator_in_page_or_frames(page, PASSWORD_SELECTORS, timeout_ms=45_000)
+    if not password_input:
+        raise RuntimeError(
+            "Campo de senha não encontrado após envio do usuário. "
+            f"Diag: {_page_diag(page)}"
+        )
+
+    password_input.fill(config.SENHA)
+    log_debug(f"Campo de senha preenchido com seletor: {password_selector}")
+    if take_screenshot:
+        take_screenshot(page, "3_pass_filled")
+
+    submit_pass_selector = _click_submit_with_fallback(page)
+    log_debug(f"Ação de submit após senha: {submit_pass_selector}")
+
+    try:
+        page.wait_for_load_state("networkidle", timeout=30_000)
+    except Exception:
+        # Alguns ambientes mantêm conexões longas; não bloquear por isso.
+        pass
+
+    log_ok("Login concluído")
+    if take_screenshot:
+        take_screenshot(page, "4_login_success")
 
 
 # ============================================================
@@ -57,22 +176,7 @@ def preparar(cenarios: list[str]):
         # LOGIN
         # -------------------------------------------------------
         try:
-            log_info("Abrindo tela de login")
-            page.goto(config.URL_LOGIN, timeout=60_000)
-            take_screenshot(page, "1_login_page")
-
-            page.fill("#user", config.USUARIO)
-            take_screenshot(page, "2_user_filled")
-            page.click("#login-submit")
-
-            page.wait_for_selector("#password")
-            page.fill("#password", config.SENHA)
-            take_screenshot(page, "3_pass_filled")
-            page.click("#login-submit")
-            
-            page.wait_for_load_state("networkidle")
-            log_ok("Login concluído")
-            take_screenshot(page, "4_login_success")
+            fazer_login(page, take_screenshot=take_screenshot)
         except Exception as e:
             # Em caso de erro, força screenshot mesmo se config for False
             if not config.DEBUG_SCREENSHOTS:
@@ -205,12 +309,7 @@ def listar_cenarios() -> list[str]:
         page = context.new_page()
 
         try:
-            page.goto(config.URL_LOGIN, timeout=60_000)
-            page.fill("#user", config.USUARIO)
-            page.click("#login-submit")
-            page.wait_for_selector("#password")
-            page.fill("#password", config.SENHA)
-            page.click("#login-submit")
+            fazer_login(page)
             try:
                 # Login wait
                 page.wait_for_load_state("networkidle", timeout=30000)
@@ -276,16 +375,7 @@ def mapear_cenarios():
         # LOGIN (Simplificado)
         # -------------------------------------------------------
         log_info("Efetuando login para listar cenários")
-        page.goto(config.URL_LOGIN, timeout=60_000)
-
-        page.fill("#user", config.USUARIO)
-        page.click("#login-submit")
-
-        page.wait_for_selector("#password")
-        page.fill("#password", config.SENHA)
-        page.click("#login-submit")
-        page.wait_for_load_state("networkidle")
-        log_ok("Login concluído")
+        fazer_login(page)
 
         # -------------------------------------------------------
         # ACESSAR LISTA
