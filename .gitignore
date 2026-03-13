@@ -12,6 +12,7 @@ temp/
 tmp/
 progresso/
 debug/
+dataset/*.json
 
 # Python Cache
 __pycache__/
