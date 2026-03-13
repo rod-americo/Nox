@@ -268,8 +268,16 @@ def _move_atomic_or_copy(
     dst.parent.mkdir(parents=True, exist_ok=True)
     try:
         os.replace(src, dst)
+        try:
+            dir_fd = os.open(dst.parent, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
         if progress_callback:
-            progress_callback(1, 1, "atomic")
+            progress_callback(1, 1, "move")
         return
     except OSError:
         pass
@@ -278,7 +286,7 @@ def _move_atomic_or_copy(
     total = int(src.stat().st_size) if src.exists() else 0
     done = 0
     if progress_callback:
-        progress_callback(done, total, "copy")
+        progress_callback(done, total, "move")
     with src.open("rb", buffering=0) as fin, tmp_dst.open("wb", buffering=0) as fout:
         while True:
             chunk = fin.read(1024 * 1024)
@@ -292,11 +300,20 @@ def _move_atomic_or_copy(
                 done += written
                 view = view[written:]
                 if progress_callback:
-                    progress_callback(done, total, "copy")
+                    progress_callback(done, total, "move")
+        os.fsync(fout.fileno())
     os.replace(tmp_dst, dst)
+    try:
+        dir_fd = os.open(dst.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError:
+        pass
     src.unlink(missing_ok=True)
     if progress_callback:
-        progress_callback(total, total, "copy")
+        progress_callback(total, total, "move")
 
 
 def _format_bytes(n: int) -> str:
@@ -525,10 +542,10 @@ def _zip_worker_loop(
                         zip_task_id,
                         total=max(total, 1),
                         completed=min(done, max(total, 1)),
-                        label=f"ZIP move {an_base} ({mode})",
+                        label=f"ZIP move {an_base}",
                         count=(
                             f"{_format_bytes(done)}/{_format_bytes(max(total, 1))}"
-                            if mode == "copy"
+                            if mode == "move"
                             else "1/1"
                         ),
                     ) or ui_tick())
